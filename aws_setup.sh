@@ -26,6 +26,7 @@ source ~/.bashrc
 conda activate mtrl
 
 # Finish installing mujoco
+yes y | sudo apt update
 yes y | sudo apt-get install patchelf
 yes y | sudo apt-get install libglew-dev
 yes y | sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3
