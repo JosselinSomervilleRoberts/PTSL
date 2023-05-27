@@ -18,6 +18,8 @@ defaults:
   - agent/optimizers: ${defaults.0.setup}_decoder
   - agent/optimizers: ${defaults.0.setup}_encoder
   - env: ???
+  - name: ???
+  - group: ???
   - replay_buffer: mtrl
   - logger: mtrl
   - metrics: ${defaults.0.setup}

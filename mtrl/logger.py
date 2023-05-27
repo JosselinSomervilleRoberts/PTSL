@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 
 # Implementation based on Denis Yarats' implementation of [SAC](https://github.com/denisyarats/pytorch_sac).
+import wandb
 import json
 import os
 import time
@@ -120,6 +121,15 @@ class MetersGroup(object):
                     pieces.append(self._format(disp_key, value, ty))
         print("| %s" % (" | ".join(pieces)))
 
+    def _dump_to_wandb(self, data, step, prefix):
+        # For each key of the data append prefix + "/" before the key.
+        # Do not log the keys: "step", "logbook_timestamp", "MODE" AND "env_index_0", "env_index_1", ...
+        data_modified = {}
+        for key in data.keys():
+            if key not in ["step", "logbook_timestamp", "mode"] and not key.startswith("env_index_"):
+                data_modified[prefix + "/" + key] = data[key]  
+        wandb.log(data_modified, step=step)
+
     def dump(self, step, prefix):
         if len(self._meters) == 0:
             return
@@ -127,6 +137,7 @@ class MetersGroup(object):
         data["step"] = step
         self._dump_to_file(data)
         self._dump_to_console(data, prefix)
+        self._dump_to_wandb(data, step, prefix)
         self._meters.clear()
 
 
