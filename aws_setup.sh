@@ -29,8 +29,8 @@ source ~/.bashrc
 conda activate mtrl
 
 # Finish mujoco installs
-yes y | pip install mujoco
-yes y | pip install scipy
+yes y | pip install mujoco-py==2.0.2.13
+yes y | pip install scipy==1.9.1
 
 # Additional installs (metaworld, mtenv)
 yes y | pip install git+https://github.com/Farama-Foundation/Metaworld.git@af8417bfc82a3e249b4b02156518d775f29eb28
