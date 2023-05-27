@@ -13,6 +13,8 @@ conda env create -f environment.yml
 conda activate mtrl
 pip install git+https://github.com/Farama-Foundation/Metaworld.git@af8417bfc82a3e249b4b02156518d775f29eb28
 pip install "mtenv[metaworld]"
+pip install git+https://github.com/JosselinSomervilleRoberts/JossPythonToolbox.git
+pip install wandb
 ```
 
 You will need to install Mujoco. If you are on an AWS EC2 instance, you can run our script: `aws_setup.sh` that should handle everything for you.

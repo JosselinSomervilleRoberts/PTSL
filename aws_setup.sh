@@ -34,4 +34,5 @@ conda activate mtrl
 pip install git+https://github.com/Farama-Foundation/Metaworld.git@af8417bfc82a3e249b4b02156518d775f29eb28 -y
 pip install "mtenv[metaworld]" -y
 pip install git+https://github.com/JosselinSomervilleRoberts/JossPythonToolbox.git -y
+pip install wandb -y
 

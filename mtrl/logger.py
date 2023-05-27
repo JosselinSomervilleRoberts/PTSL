@@ -122,12 +122,25 @@ class MetersGroup(object):
         print("| %s" % (" | ".join(pieces)))
 
     def _dump_to_wandb(self, data, step, prefix):
+        # Make first letter of prefix a capital letter.
+        prefix = prefix[0].upper() + prefix[1:]
+
         # For each key of the data append prefix + "/" before the key.
         # Do not log the keys: "step", "logbook_timestamp", "MODE" AND "env_index_0", "env_index_1", ...
         data_modified = {}
         for key in data.keys():
             if key not in ["step", "logbook_timestamp", "mode"] and not key.startswith("env_index_"):
-                data_modified[prefix + "/" + key] = data[key]  
+                # Ceck if the key contains "env_index_"
+                if "env_index_" in key:
+                    # If so, get the number following "env_index_", by first finding the index of "env_index_" and then adding 10 to it.
+                    # This is because "env_index_" is 10 characters long.
+                    index = key.find("env_index_") + 10
+                    # Get the number following "env_index_".
+                    env_index = key[index:]
+                    real_key = key[:index]
+                    data_modified["Env " + env_index + "/" + real_key] = data[key]
+                else:
+                    data_modified[prefix + "/" + key] = data[key] 
         wandb.log(data_modified, step=step)
 
     def dump(self, step, prefix):
