@@ -10,7 +10,7 @@ task_encoder_cfg:
     _target_: mtrl.agent.components.task_encoder.TaskEncoder
     pretrained_embedding_cfg:
       should_use: False
-      path_to_load_from: /private/home/sodhani/projects/mtrl/metadata/task_embedding/roberta_small/${env.name}.json
+      path_to_load_from: /home/ubuntu/mtrl/metadata/task_embedding/roberta_small/${env.name}.json
       ordered_task_list: ${env.ordered_task_list}
     num_embeddings: ${agent.multitask.num_envs}
     embedding_dim: 50
