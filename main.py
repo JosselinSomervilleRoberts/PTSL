@@ -5,6 +5,7 @@
 import hydra
 import wandb
 import time
+import os
 
 from toolbox.aws import shutdown
 
@@ -44,11 +45,13 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
     if time_start < 0: time_start = time.time()
 
     try:
+        # RUn "mv logs/* logs_saved/"
+        os.system("mv logs/* logs_saved/")
         run(config, seed=seed)
     except Exception as e:
         # If it has been running for less than 5 minutes, then it is probably a bug
         # Otherwise, it is probably a timeout, so shutdown the instance
-        if time.time() - test_start < 5 * 60:
+        if time.time() - time_start < 5 * 60:
             raise e
         else:
             print("Timeout, shutting down")
