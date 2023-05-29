@@ -14,6 +14,9 @@ from torch import nn
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.ds.task_info import TaskInfo
 from mtrl.utils.types import ConfigType, TensorType
+from keras.tests.model_architectures import shared_layer_subclassed_model
+from sympy.tensor.tests.test_indexed import test_Idx_inequalities
+from transformers.models.electra.modeling_flax_electra import FlaxElectraForTokenClassification
 
 
 class Linear(nn.Module):
@@ -101,6 +104,195 @@ class FeedForward(nn.Module):
 
     def __repr__(self) -> str:
         return str(self._model)
+    
+
+class FeedForwardPAL(nn.Module):
+    def __init__(
+        self,
+        num_experts: int,
+        in_features: int,
+        out_features: int,
+        num_layers: int,
+        hidden_features: int,
+        pal_features: int,
+        shared_projection: bool = True,
+        use_pal_layer_on_input: bool = False,
+        use_pal_layer_on_output: bool = False,
+        bias: bool = True,
+    ):
+        """A feedforward model of mixture of experts layers and projected attention layers.
+        For a given input, the output will go throught several linear layers (shared for each
+        tasks, i.e. simple MDP). However, at each step, the feature will be projected down to
+        a lower dimension (pal_features), go through a linear layer to produce pal_features
+        features, and then projected back to the original dimension. THe result is then added
+        to the original output of the linear layer. This is repeated for each layer (the projection
+        matrices can be shared or not).
+        This is a variant of the PAL model from https://arxiv.org/pdf/1902.02671.pdf
+
+        Args:
+            num_experts (int): number of experts in the mixture.
+            in_features (int): size of each input sample for one expert.
+            out_features (int): size of each output sample for one expert.
+            num_layers (int): number of layers in the feedforward network.
+            hidden_features (int): dimensionality of hidden layer in the
+                feedforward network.
+            pal_features (int): dimensionality of the projected attention layer.
+            shared_projection (bool): whether to share the projection matrices
+            bias (bool, optional): if set to ``False``, the layer will
+                not learn an additive bias. Defaults to True.
+        """
+        super().__init__()
+        self._shared_projection = shared_projection
+        self._use_pal_layer_on_input = use_pal_layer_on_input
+        self._use_pal_layer_on_output = use_pal_layer_on_output
+
+        # First build the shared linear layers
+        # This is simply a regular feedforward network
+        shared_layers: List[nn.Module] = []
+        current_in_features = in_features
+        for _ in range(num_layers - 1):
+            linear = nn.Linear(
+                in_features=current_in_features,
+                out_features=hidden_features,
+                bias=bias,
+            )
+            shared_layers.append(linear)
+            current_in_features = hidden_features
+        linear = nn.Linear(
+            in_features=current_in_features,
+            out_features=out_features,
+            bias=bias,
+        )
+        shared_layers.append(linear)
+
+        # Build the Projection Matrices
+        # If the matrices are shared, we only need one up and one down projection
+        # Otherwise, we need one up and one down projection for each intermediate layer
+        if shared_projection:
+            down_projection = nn.Linear(
+                in_features=hidden_features,
+                out_features=pal_features,
+                bias=bias,
+            )
+            up_projection = nn.Linear(
+                in_features=pal_features,
+                out_features=hidden_features,
+                bias=bias,
+            )
+            self.up_projections = nn.ModuleList([up_projection])
+            self.down_projections = nn.ModuleList([down_projection])
+        else:
+            up_projections: List[nn.Module] = []
+            down_projections: List[nn.Module] = []
+            if use_pal_layer_on_input:
+                down_projection = nn.Linear(
+                    in_features=in_features,
+                    out_features=pal_features,
+                    bias=bias,
+                )
+                up_projection = nn.Linear(
+                    in_features=pal_features,
+                    out_features=hidden_features,
+                    bias=bias,
+                )
+                up_projections.append(up_projection)
+                down_projections.append(down_projection)
+            for _ in range(num_layers - 2):
+                down_projection = nn.Linear(
+                    in_features=hidden_features,
+                    out_features=pal_features,
+                    bias=bias,
+                )
+                up_projection = nn.Linear(
+                    in_features=pal_features,
+                    out_features=hidden_features,
+                    bias=bias,
+                )
+                up_projections.append(up_projection)
+                down_projections.append(down_projection)
+            if use_pal_layer_on_output:
+                down_projection = nn.Linear(
+                    in_features=hidden_features,
+                    out_features=pal_features,
+                    bias=bias,
+                )
+                up_projection = nn.Linear(
+                    in_features=pal_features,
+                    out_features=out_features,
+                    bias=bias,
+                )
+                up_projections.append(up_projection)
+                down_projections.append(down_projection)
+            self.up_projections = nn.ModuleList(up_projections)
+            self.down_projections = nn.ModuleList(down_projections)
+
+        # Build the PAL layers
+        # There are num_layers - 2 + use_pal_layer_on_input + use_pal_layer_on_output PAL layers
+        # Each PAL layer is a Linear layer with pal_features input and output and num_experts
+
+        pal_layers: List[nn.Module] = []
+        current_in_features = pal_features
+        for _ in range(num_layers - 2 + use_pal_layer_on_input + use_pal_layer_on_output):
+            linear = Linear(
+                num_experts=num_experts,
+                in_features=pal_features,
+                out_features=pal_features,
+                bias=bias,
+            )
+            pal_layers.append(linear)
+
+    def _get_idx_projection_matrix(self, idx_layer: int):
+        """Get the projection matrix index for the idx_layer layer."""
+        if self._shared_projection:
+            return 0
+        elif idx_layer < 0:
+            if self._use_pal_layer_on_output:
+                return idx_layer
+            else:
+                return idx_layer - 1
+        else:
+            if self._use_pal_layer_on_input:
+                return idx_layer
+            else:
+                return idx_layer - 1
+
+    def _get_project_down_matrix(self, idx_layer: int):
+        """Get the projection matrix for the idx_layer layer."""
+        return self.down_projections[self._get_idx_projection_matrix(idx_layer)]
+    
+    def _get_project_up_matrix(self, idx_layer: int):
+        """Get the projection matrix for the idx_layer layer."""
+        return self.up_projections[self._get_idx_projection_matrix(idx_layer)]
+
+    def forward(self, x: TensorType) -> TensorType:
+        # Apply the first layer
+        x_shared = self.shared_layers[0](x)
+        if self._use_pal_layer_on_input:
+            x_pal = self._get_project_down_matrix(0)(x)
+            x_pal = self.pal_layers[0](x_pal)
+            x_pal = self._get_project_up_matrix(0)(x_pal)
+            x_shared = x_shared + x_pal
+        x = nn.ReLU()(x_shared)
+
+        # Apply the intermediate layers
+        for idx_layer in range(1, len(self.shared_layers) - 1):
+            x_shared = self.shared_layers[idx_layer](x)
+            x_pal = self._get_project_down_matrix(idx_layer)(x)
+            x_pal = self.pal_layers[idx_layer](x_pal)
+            x_pal = self._get_project_up_matrix(idx_layer)(x_pal)
+            x_shared = x_shared + x_pal
+            x = nn.ReLU()(x_shared)
+
+        # Apply the last layer
+        x_shared = self.shared_layers[-1](x)
+        if self._use_pal_layer_on_output:
+            x_pal = self._get_project_down_matrix(-1)(x)
+            x_pal = self.pal_layers[-1](x_pal)
+            x_pal = self._get_project_up_matrix(-1)(x_pal)
+            x_shared = x_shared + x_pal
+
+        return x_shared
+
 
 
 class MaskCache:

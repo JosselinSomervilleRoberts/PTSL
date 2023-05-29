@@ -259,6 +259,18 @@ class Actor(BaseActor):
             num_layers=num_layers,
             bias=True,
         )
+    
+    def _make_pal(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        pal_dim: int,
+        output_dim: int,
+        num_layers: int,
+        multitask_cfg: ConfigType,
+    ):
+        pass
+            
 
     def _make_trunk(
         self,
@@ -359,6 +371,8 @@ class Actor(BaseActor):
                     multitask_cfg=multitask_cfg,
                 )
                 return nn.Sequential(trunk, nn.ReLU(), heads)
+        # elif pal: # TODO
+        #     pass
         else:
             trunk = self._make_trunk(
                 input_dim=model_input_dim,
