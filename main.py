@@ -46,7 +46,7 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
 
     try:
         # RUn "mv logs/* logs_saved/"
-        os.system("mv logs/* logs_saved/")
+        os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
         run(config, seed=seed)
     except Exception as e:
         # If it has been running for less than 5 minutes, then it is probably a bug
