@@ -4,10 +4,14 @@
 
 import hydra
 import wandb
+import time
+
+from toolbox.aws import shutdown
 
 from mtrl.app.run import run
 from mtrl.utils import config as config_utils
 from mtrl.utils.types import ConfigType
+from ipykernel.tests.test_ipkernel_direct import test_start
 
 
 def start_wandb(config):
@@ -33,14 +37,39 @@ def start_wandb(config):
         "lr/encoder": config.agent.optimizers.encoder.lr,
         "batch_size": config.replay_buffer.batch_size,
     }
-    wandb.init(project="MTRL", name=wandb_name, group=group_wandb, config=config_wandb)
+    wandb.init(project=f"MTRL{config.agent.multitask.num_envs}", name=wandb_name, group=group_wandb, config=config_wandb)
 
+def launch_one_seed(config, seed: int):
+    config.setup.seed = seed
+    start_wandb(config)
+    test_start = time.time()
+
+    try:
+        run(config)
+    except Exception as e:
+        # If it has been running for less than 1 minute, then it is probably a bug
+        # Otherwise, it is probably a timeout, so shutdown the instance
+        if time.time() - test_start < 60:
+            raise e
+        else:
+            print("Timeout, shutting down")
+            wandb.finish()
+            shutdown()
+            return
+        
+    wandb.finish()
+    return
 
 @hydra.main(config_path="config", config_name="config")
 def launch(config: ConfigType) -> None:
     config = config_utils.process_config(config)
-    start_wandb(config)
-    return run(config)
+    seed_ref = config.setup.seed
+
+    for seed_inc in range(config.num_seeds):
+        seed = seed_ref + seed_inc
+        launch_one_seed(config, seed)
+    shutdown()
+    return
 
 
 if __name__ == "__main__":
