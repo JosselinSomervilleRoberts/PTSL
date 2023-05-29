@@ -41,14 +41,17 @@ def start_wandb(config):
     wandb.init(project=f"MTRL{config.agent.multitask.num_envs}", name=wandb_name, group=group_wandb, config=config_wandb)
 
 def launch_one_seed(config, seed: int, time_start: int = -1):
-    start_wandb(config)
     if time_start < 0: time_start = time.time()
 
     try:
         # RUn "mv logs/* logs_saved/"
+        from toolbox.printing import print_visible
+        print_visible("Before commands")
         os.system("rm -f -r logs")
         os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
+        print_visible("after commands")
         config = config_utils.process_config(config)
+        start_wandb(config)
         run(config, seed=seed)
     except Exception as e:
         # If it has been running for less than 5 minutes, then it is probably a bug
