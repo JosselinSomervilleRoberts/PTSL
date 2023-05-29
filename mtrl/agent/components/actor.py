@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from toolbox.printing import debug
+from toolbox.printing import debug, sdebug
 
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.components import base as base_component
@@ -406,6 +406,7 @@ class Actor(BaseActor):
         detach_encoder: bool = False,
     ) -> Tuple[TensorType, TensorType, TensorType, TensorType]:
         task_info = mtobs.task_info
+        sdebug(task_info)
         assert task_info is not None
         if self.should_condition_encoder_on_task_info:
             obs = self.encode(mtobs=mtobs, detach=detach_encoder)
