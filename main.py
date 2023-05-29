@@ -47,8 +47,8 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
         # RUn "mv logs/* logs_saved/"
         from toolbox.printing import print_visible
         print_visible("Before commands")
-        os.system("rm -f -r logs")
-        os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
+        os.system("rm -r -f /home/ubuntu/mtrl/logs")
+        # os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
         print_visible("after commands")
         config = config_utils.process_config(config)
         start_wandb(config)
