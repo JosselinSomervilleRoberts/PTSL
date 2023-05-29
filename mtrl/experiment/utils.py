@@ -10,14 +10,14 @@ from mtrl.utils.types import ConfigType
 from mtrl.utils.utils import set_seed
 
 
-def prepare_and_run(config: ConfigType) -> None:
+def prepare_and_run(config: ConfigType, seed: int) -> None:
     """Prepare an experiment and run the experiment.
 
     Args:
         config (ConfigType): config of the experiment
     """
 
-    set_seed(config.setup.seed)
+    set_seed(seed=seed)
     print(f"Starting Experiment at {time.asctime(time.localtime(time.time()))}")
     print(f"torch version = {torch.__version__}")  # type: ignore
     experiment = hydra.utils.instantiate(
