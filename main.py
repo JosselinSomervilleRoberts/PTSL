@@ -46,6 +46,7 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
 
     try:
         # RUn "mv logs/* logs_saved/"
+        os.system("rm -f -r logs")
         os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
         config = config_utils.process_config(config)
         run(config, seed=seed)
