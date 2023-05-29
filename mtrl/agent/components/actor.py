@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from toolbox.printing import sdebug
+from toolbox.printing import debug
 
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.components import base as base_component
@@ -421,7 +421,7 @@ class Actor(BaseActor):
                 env_obs=mtobs.env_obs, task_obs=mtobs.task_obs, task_info=temp_task_info
             )
             obs = self.encode(temp_mtobs, detach=detach_encoder)
-        sdebug(obs)
+        debug(obs)
         if self.should_condition_model_on_task_info:
             new_mtobs = MTObs(
                 env_obs=obs, task_obs=mtobs.task_obs, task_info=mtobs.task_info
@@ -429,14 +429,14 @@ class Actor(BaseActor):
             mu_and_log_std = self.model(new_mtobs)
         else:
             mu_and_log_std = self.model(obs)
-        sdebug(mu_and_log_std)
+        debug(mu_and_log_std)
         if self.should_use_multi_head_policy:
             print("using multi head policy")
             policy_mask = self.moe_masks.get_mask(task_info=task_info)
             sum_of_masked_mu_and_log_std = (mu_and_log_std * policy_mask).sum(dim=0)
             sum_of_policy_count = policy_mask.sum(dim=0)
             mu_and_log_std = sum_of_masked_mu_and_log_std / sum_of_policy_count
-            sdebug(mu_and_log_std)
+            debug(mu_and_log_std)
         print("")
         mu, log_std = mu_and_log_std.chunk(2, dim=-1)
         # constrain log_std inside [log_std_min, log_std_max]
