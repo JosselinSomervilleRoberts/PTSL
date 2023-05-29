@@ -59,6 +59,7 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
         if time.time() - time_start < 5 * 60:
             raise e
         else:
+            print(f"Exception: {e}")
             print("Timeout, shutting down")
             wandb.finish()
             shutdown()
