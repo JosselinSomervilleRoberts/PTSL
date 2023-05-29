@@ -50,9 +50,8 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
         os.system("rm -r -f /home/ubuntu/mtrl/logs")
         # os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
         print_visible("after commands")
-        config.setup.seed = seed
         start_wandb(config)
-        run(config)
+        run(config, seed=seed)
     except Exception as e:
         # If it has been running for less than 5 minutes, then it is probably a bug
         # Otherwise, it is probably a timeout, so shutdown the instance
