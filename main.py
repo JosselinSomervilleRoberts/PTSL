@@ -39,18 +39,16 @@ def start_wandb(config):
     }
     wandb.init(project=f"MTRL{config.agent.multitask.num_envs}", name=wandb_name, group=group_wandb, config=config_wandb)
 
-def launch_one_seed(config, seed: int):
-    config.setup.seed = seed
-    config = config_utils.process_config(config)
+def launch_one_seed(config, seed: int, time_start: int = -1):
     start_wandb(config)
-    test_start = time.time()
+    if time_start < 0: time_start = time.time()
 
     try:
-        run(config)
+        run(config, seed=seed)
     except Exception as e:
-        # If it has been running for less than 1 minute, then it is probably a bug
+        # If it has been running for less than 5 minutes, then it is probably a bug
         # Otherwise, it is probably a timeout, so shutdown the instance
-        if time.time() - test_start < 60:
+        if time.time() - test_start < 5 * 60:
             raise e
         else:
             print("Timeout, shutting down")
@@ -64,10 +62,12 @@ def launch_one_seed(config, seed: int):
 @hydra.main(config_path="config", config_name="config")
 def launch(config: ConfigType) -> None:
     seed_ref = config.setup.seed
+    config = config_utils.process_config(config)
+    time_start = time.time()
 
     for seed_inc in range(config.num_seeds):
         seed = seed_ref + seed_inc
-        launch_one_seed(config, seed)
+        launch_one_seed(config, seed=seed, time_start=time_start)
     shutdown()
     return
 

@@ -9,7 +9,7 @@ from mtrl.utils import config as config_utils
 from mtrl.utils.types import ConfigType
 
 
-def run(config: ConfigType) -> None:
+def run(config: ConfigType, seed: int) -> None:
     """Create and run the experiment.
 
     Args:
@@ -32,7 +32,7 @@ def run(config: ConfigType) -> None:
     config_to_write["status"] = "RUNNING"
     logbook.write_metadata(config_to_write)
 
-    experiment_utils.prepare_and_run(config=config)
+    experiment_utils.prepare_and_run(config=config, seed=seed)
 
     config_to_write["status"] = "COMPLETED"
     logbook.write_metadata(config_to_write)
