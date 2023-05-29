@@ -12,17 +12,18 @@ from toolbox.aws import shutdown
 from mtrl.app.run import run
 from mtrl.utils import config as config_utils
 from mtrl.utils.types import ConfigType
-from ipykernel.tests.test_ipkernel_direct import test_start
+from toolbox.printing import print_visible
 
 
-def start_wandb(config):
-    wandb_name = f"{config.name}_{config.setup.seed}"
+def start_wandb(config, seed: int = -1):
+    wandb_seed = seed if seed >= 0 else config.setup.seed
+    wandb_name = f"{config.name}_{wandb_seed}"
     group_wandb = config.name
     config_wandb = {
         "num_tasks": config.agent.multitask.num_envs,
         "agent": config.agent.name,
         "encoder": config.agent.encoder.type_to_select,
-        "seed": config.setup.seed,
+        "seed": wandb_seed,
         "agent/encoder_feature_dim": config.agent.encoder_feature_dim,
         "agent/num_layers": config.agent.num_layers,
         "agent/num_filters": config.agent.num_filters,
@@ -45,12 +46,9 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
 
     try:
         # RUn "mv logs/* logs_saved/"
-        from toolbox.printing import print_visible
-        print_visible("Before commands")
+        print_visible("Starting seed " + str(seed))
         os.system("rm -r -f /home/ubuntu/mtrl/logs")
-        # os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
-        print_visible("after commands")
-        start_wandb(config)
+        start_wandb(config, seed=seed)
         run(config, seed=seed)
     except Exception as e:
         # If it has been running for less than 5 minutes, then it is probably a bug

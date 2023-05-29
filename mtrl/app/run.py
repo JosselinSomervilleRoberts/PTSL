@@ -9,7 +9,7 @@ from mtrl.utils import config as config_utils
 from mtrl.utils.types import ConfigType
 
 
-def run(config: ConfigType, seed: int) -> None:
+def run(config: ConfigType, seed: int = -1) -> None:
     """Create and run the experiment.
 
     Args:
