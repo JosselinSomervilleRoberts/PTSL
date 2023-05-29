@@ -50,9 +50,9 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
         os.system("rm -r -f /home/ubuntu/mtrl/logs")
         # os.system("mv /home/ubuntu/mtrl/logs/* /home/ubuntu/mtrl/logs_saved/")
         print_visible("after commands")
-        config = config_utils.process_config(config)
+        config.setup.seed = seed
         start_wandb(config)
-        run(config, seed=seed)
+        run(config)
     except Exception as e:
         # If it has been running for less than 5 minutes, then it is probably a bug
         # Otherwise, it is probably a timeout, so shutdown the instance
@@ -71,6 +71,7 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
 @hydra.main(config_path="config", config_name="config")
 def launch(config: ConfigType) -> None:
     seed_ref = config.setup.seed
+    config = config_utils.process_config(config)
     time_start = time.time()
 
     for seed_inc in range(config.num_seeds):

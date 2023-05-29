@@ -104,7 +104,7 @@ def process_config(config: ConfigType, should_make_dir: bool = True) -> ConfigTy
     """
     config = _process_setup_config(config=config)
     config = _process_experiment_config(config=config, should_make_dir=should_make_dir)
-    return set_struct(make_config_immutable(config))
+    return set_struct(config)
 
 
 def read_config_from_file(config_path: str) -> ConfigType:
