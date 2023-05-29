@@ -14,9 +14,6 @@ from torch import nn
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.ds.task_info import TaskInfo
 from mtrl.utils.types import ConfigType, TensorType
-from keras.tests.model_architectures import shared_layer_subclassed_model
-from sympy.tensor.tests.test_indexed import test_Idx_inequalities
-from transformers.models.electra.modeling_flax_electra import FlaxElectraForTokenClassification
 
 
 class Linear(nn.Module):
