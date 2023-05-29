@@ -406,7 +406,7 @@ class Actor(BaseActor):
         detach_encoder: bool = False,
     ) -> Tuple[TensorType, TensorType, TensorType, TensorType]:
         task_info = mtobs.task_info
-        sdebug(task_info)
+        sdebug(task_info.env_index)
         assert task_info is not None
         if self.should_condition_encoder_on_task_info:
             obs = self.encode(mtobs=mtobs, detach=detach_encoder)
