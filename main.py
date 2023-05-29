@@ -41,6 +41,7 @@ def start_wandb(config):
 
 def launch_one_seed(config, seed: int):
     config.setup.seed = seed
+    config = config_utils.process_config(config)
     start_wandb(config)
     test_start = time.time()
 
@@ -62,7 +63,6 @@ def launch_one_seed(config, seed: int):
 
 @hydra.main(config_path="config", config_name="config")
 def launch(config: ConfigType) -> None:
-    config = config_utils.process_config(config)
     seed_ref = config.setup.seed
 
     for seed_inc in range(config.num_seeds):
