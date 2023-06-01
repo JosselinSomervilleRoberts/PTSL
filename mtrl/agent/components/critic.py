@@ -252,6 +252,9 @@ class QFunction(base_component.Component):
             return [self.model[-1]]  # type: ignore[index]
 
     def forward(self, mtobs: MTObs) -> TensorType:
+        task_info = mtobs.task_info
+        if self.should_use_pal:
+            self.model.set_indices(task_info.env_index)
         obs_action = mtobs.env_obs
         if self.should_condition_model_on_task_info:
             obs_action = self.obs_action_projection_layer(obs_action)

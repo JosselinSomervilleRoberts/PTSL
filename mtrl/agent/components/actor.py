@@ -439,7 +439,8 @@ class Actor(BaseActor):
         detach_encoder: bool = False,
     ) -> Tuple[TensorType, TensorType, TensorType, TensorType]:
         task_info = mtobs.task_info
-        sdebug(task_info.env_index)
+        if self.should_use_pal:
+            self.model.set_indices(task_info.env_index)
         assert task_info is not None
         if self.should_condition_encoder_on_task_info:
             obs = self.encode(mtobs=mtobs, detach=detach_encoder)
@@ -462,15 +463,11 @@ class Actor(BaseActor):
             mu_and_log_std = self.model(new_mtobs)
         else:
             mu_and_log_std = self.model(obs)
-        debug(mu_and_log_std)
         if self.should_use_multi_head_policy:
-            print("using multi head policy")
             policy_mask = self.moe_masks.get_mask(task_info=task_info)
             sum_of_masked_mu_and_log_std = (mu_and_log_std * policy_mask).sum(dim=0)
             sum_of_policy_count = policy_mask.sum(dim=0)
             mu_and_log_std = sum_of_masked_mu_and_log_std / sum_of_policy_count
-            # debug(mu_and_log_std)
-        print("")
         mu, log_std = mu_and_log_std.chunk(2, dim=-1)
         # constrain log_std inside [log_std_min, log_std_max]
         log_std = torch.tanh(log_std)

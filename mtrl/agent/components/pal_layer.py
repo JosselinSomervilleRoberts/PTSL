@@ -38,6 +38,7 @@ class PALLayer(nn.Module):
         self.pal_size = pal_size
         self.input_size = input_size
         self.output_size = output_size
+        self.indices = None
         self._debug = debug
 
         # Shared Linear, it is a vanilla Linear layer
@@ -116,8 +117,14 @@ class PALLayer(nn.Module):
     def set_debug(self, debug: bool) -> None:
         self._debug = debug
 
+    def set_indices(self, indices: torch.Tensor) -> None:
+        self.indices = indices.reshape(-1)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.shape == (self.n_tasks, self.input_size), f"Expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
+        if self.indices is None:
+            assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
+        else:
+            assert x.shape == (self.indices.shape[0], self.input_size), f"Since indices are specified, expected shape {(self.indices.shape[0], self.input_size)}, got {x.shape}"
         if self._debug: print_debug(x)
 
         # Shared linear
@@ -131,8 +138,10 @@ class PALLayer(nn.Module):
 
         # 2. Compute X @ Wi for all i efficiently using broadcasting
         x_down = x_down.unsqueeze(1)
-        y_down = torch.matmul(x_down, self.individual_linears_weight)
-        y_down = y_down.squeeze(1) + self.individual_linears_bias
+        weights = self.individual_linears_weight[self.indices] if self.indices is not None else self.individual_linears_weight
+        bias = self.individual_linears_bias[self.indices] if self.indices is not None else self.individual_linears_bias
+        y_down = torch.matmul(x_down, weights)
+        y_down = y_down.squeeze(1) + bias
         if self._debug: print_debug(y_down)
 
         # 3. Project up

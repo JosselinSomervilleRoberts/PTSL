@@ -191,6 +191,9 @@ class FeedForwardPAL(nn.Module):
                 print_debug(x_down)
         return x
 
+    def set_indices(self, indices: torch.Tensor) -> None:
+        for layer in self._layers:
+            layer.set_indices(indices)
 
 
 class MaskCache:
