@@ -23,6 +23,11 @@ def check_if_should_use_multi_head_policy(multitask_cfg: ConfigType) -> bool:
         return multitask_cfg.should_use_multi_head_policy
     return False
 
+def check_if_should_use_pal(multitask_cfg: ConfigType) -> bool:
+    if "should_use_pal" in multitask_cfg:
+        return multitask_cfg.should_use_pal
+    return False
+
 
 def check_if_should_use_task_encoder(multitask_cfg: ConfigType) -> bool:
     if "should_use_task_encoder" in multitask_cfg:
@@ -167,8 +172,14 @@ class Actor(BaseActor):
         self.should_use_multi_head_policy = check_if_should_use_multi_head_policy(
             multitask_cfg=multitask_cfg
         )
+        self.should_use_pal = check_if_should_use_pal(
+            multitask_cfg=multitask_cfg
+        )
+        assert not (
+            self.should_use_multi_head_policy and self.should_use_pal
+        ), "Cannot have both multi-head policy and PAL"
 
-        if self.should_use_multi_head_policy:
+        if self.should_use_multi_head_policy or self.should_use_pal:
             task_index_to_mask = torch.eye(multitask_cfg.num_envs)
             self.moe_masks = moe_layer.MaskCache(
                 task_index_to_mask=task_index_to_mask,
@@ -268,10 +279,20 @@ class Actor(BaseActor):
         pal_dim: int,
         output_dim: int,
         num_layers: int,
+        shared_projection: bool,
+        use_residual_connections: bool,
         multitask_cfg: ConfigType,
     ):
-        pass
-            
+        return moe_layer.FeedForwardPAL(
+            n_tasks=multitask_cfg.num_envs,
+            in_features=input_dim,
+            out_features=output_dim,
+            num_layers=num_layers,
+            hidden_features=hidden_dim,
+            pal_features=pal_dim,
+            shared_projection=shared_projection,
+            use_residual_connections=use_residual_connections,
+        )      
 
     def _make_trunk(
         self,
@@ -346,6 +367,18 @@ class Actor(BaseActor):
         ):
             model_input_dim += multitask_cfg.task_encoder_cfg.model_cfg.output_dim
 
+        if self.should_use_pal:
+            model = self._make_pal(
+                input_dim=model_input_dim,
+                hidden_dim=hidden_dim,
+                pal_dim=multitask_cfg.pal_cfg.pal_dim,
+                output_dim=model_output_dim,
+                num_layers=num_layers,
+                shared_projection=multitask_cfg.pal_cfg.shared_projection,
+                use_residual_connections=multitask_cfg.pal_cfg.use_residual_connections,
+                multitask_cfg=multitask_cfg,
+            )
+            return model
         if self.should_use_multi_head_policy:
             if multitask_cfg.should_use_disjoint_policy:
                 heads = self._make_head(
@@ -422,7 +455,6 @@ class Actor(BaseActor):
                 env_obs=mtobs.env_obs, task_obs=mtobs.task_obs, task_info=temp_task_info
             )
             obs = self.encode(temp_mtobs, detach=detach_encoder)
-        debug(obs)
         if self.should_condition_model_on_task_info:
             new_mtobs = MTObs(
                 env_obs=obs, task_obs=mtobs.task_obs, task_info=mtobs.task_info
