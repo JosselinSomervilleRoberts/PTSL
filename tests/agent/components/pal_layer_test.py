@@ -1,4 +1,5 @@
 from mtrl.agent.components.pal_layer import PALLayer
+from mtrl.agent.components.moe_layer import ModuleList
 import numpy as np
 import torch.nn as nn
 import torch
@@ -9,7 +10,7 @@ def test_pal_layer_correctness():
 
     # Creates individually all the components of the PAL Layer
     shared_linear = nn.Linear(in_dim, out_dim)
-    individual_linears: nn.ModuleList[nn.Linear] = nn.ModuleList()
+    individual_linears: ModuleList[nn.Linear] = ModuleList()
     for _ in range(n_tasks):
         individual_linears.append(nn.Linear(pal_dim, pal_dim))
     project_down = nn.Linear(in_dim, pal_dim, bias=False)

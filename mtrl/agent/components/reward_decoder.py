@@ -7,6 +7,7 @@ from typing import List
 import torch.nn as nn
 
 from mtrl.agent.components import base as base_component
+from mtrl.agent.components import moe_layer
 from mtrl.utils.types import ModelType, TensorType
 
 
@@ -22,12 +23,32 @@ class RewardDecoder(base_component.Component):
                 the reward.
         """
         super().__init__()
-        self.trunk = nn.Sequential(
+        self.trunk = moe_layer.Sequential(
             nn.Linear(feature_dim, 512),
             nn.LayerNorm(512),
             nn.ReLU(),
             nn.Linear(512, 1),
         )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the RewardDecoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the RewardDecoder.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Reward Decoder ({num_parameters} parameters)\n"
+        summary += f"{prefix}Trunk:\n"
+        summary += self.trunk.summary(prefix=f"{prefix}\t")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
         return self.trunk(x)

@@ -221,6 +221,29 @@ class Actor(BaseActor):
 
         self.apply(agent_utils.weight_init)
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the actor.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the actor.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Actor ({num_parameters} parameters)\n"
+        summary += f"{prefix}Encoder:\n"
+        summary += self.encoder.summary(prefix=prefix + "\t")
+        summary += f"{prefix}Model:\n"
+        summary += self.model.summary(prefix=prefix + "\t")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
     def _make_encoder(
         self,
         env_obs_shape: List[int],
@@ -404,9 +427,7 @@ class Actor(BaseActor):
                     num_layers=num_layers,
                     multitask_cfg=multitask_cfg,
                 )
-                return nn.Sequential(trunk, nn.ReLU(), heads)
-        # elif pal: # TODO
-        #     pass
+                return moe_layer.Sequential(trunk, nn.ReLU(), heads)
         else:
             trunk = self._make_trunk(
                 input_dim=model_input_dim,

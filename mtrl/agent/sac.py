@@ -88,6 +88,7 @@ class Agent(AbstractAgent):
             "critic_target": self.critic_target,
             "log_alpha": self.log_alpha,  # type: ignore[dict-item]
         }
+
         # optimizers
         self.actor_optimizer = hydra.utils.instantiate(
             actor_optimizer_cfg, params=self.get_parameters(name="actor")
@@ -125,6 +126,35 @@ class Agent(AbstractAgent):
 
         if should_complete_init:
             self.complete_init(cfg_to_load_model=cfg_to_load_model)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the SAC.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the SAC.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.actor.parameters() if p.requires_grad)
+        num_parameters += sum(p.numel() for p in self.critic.parameters() if p.requires_grad)
+        num_parameters += sum(p.numel() for p in self.critic_target.parameters() if p.requires_grad)
+        num_parameters += sum(p.numel() for p in self.log_alpha.parameters() if p.requires_grad)
+        summary += f"{prefix}SAC Agent ({num_parameters} parameters)\n"
+        summary += f"\n{prefix}Actor\n"
+        summary += self.actor.summary(prefix=prefix + "\t")
+        summary += f"\n{prefix}Critic\n"
+        summary += self.critic.summary(prefix=prefix + "\t")
+        summary += f"\n{prefix}Critic Target\n"
+        summary += self.critic_target.summary(prefix=prefix + "\t")
+        summary += f"\n{prefix}Log Alpha\n"
+        summary += f"{prefix}\tTensor ({self.log_alpha.shape})\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def complete_init(self, cfg_to_load_model: Optional[ConfigType]):
         if cfg_to_load_model:

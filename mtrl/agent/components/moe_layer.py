@@ -19,6 +19,63 @@ from toolbox.printing import debug as print_debug
 from wandb.vendor.pynvml.pynvml import NVML_THERMAL_CONTROLLER_NVSYSCON_CANOAS
 
 
+
+class Sequential(nn.Sequential):
+    """Functions exactly as torch.nn.Sequential, but has a summary method."""
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the Sequential.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the Sequential.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Sequential ({num_parameters} parameters)\n"
+        for i, layer in enumerate(self):
+            # If the layer has a summary method, use it.
+            if hasattr(layer, "summary"):
+                summary += f"{prefix}\tLayer {i}:\n"
+                summary += layer.summary(prefix=prefix + "\t\t")
+            else:
+                summary += f"{prefix}\tLayer {i}: {layer}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
+class ModuleList(nn.ModuleList):
+    """Functions exactly as torch.nn.ModuleList, but has a summary method."""
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the ModuleList.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the ModuleList.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}ModuleList ({num_parameters} parameters)\n"
+        for i, layer in enumerate(self):
+            # If the layer has a summary method, use it.
+            if hasattr(layer, "summary"):
+                summary += f"{prefix}\tLayer {i}:\n"
+                summary += layer.summary(prefix=prefix + "\t\t")
+            else:
+                summary += f"{prefix}\tLayer {i}: {layer}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
 class Linear(nn.Module):
     def __init__(
         self, num_experts: int, in_features: int, out_features: int, bias: bool = True
@@ -44,6 +101,29 @@ class Linear(nn.Module):
             self.use_bias = True
         else:
             self.use_bias = False
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the Linear.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the Linear.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Linear ({num_parameters} parameters)\n"
+        summary += f"{prefix}\tWeight: Tensor ({self.num_experts}, {self.in_features}, {self.out_features})\n"
+        if self.use_bias:
+            summary += f"{prefix}\tBias: Tensor ({self.num_experts}, 1, {self.out_features})\n"
+        else:
+            summary += f"{prefix}\tBias: None\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
         if self.use_bias:
@@ -78,7 +158,7 @@ class FeedForward(nn.Module):
                 not learn an additive bias. Defaults to True.
         """
         super().__init__()
-        layers: List[nn.Module] = []
+        self._layers: List[nn.Module] = []
         current_in_features = in_features
         for _ in range(num_layers - 1):
             linear = Linear(
@@ -87,8 +167,8 @@ class FeedForward(nn.Module):
                 out_features=hidden_features,
                 bias=bias,
             )
-            layers.append(linear)
-            layers.append(nn.ReLU())
+            self._layers.append(linear)
+            self._layers.append(nn.ReLU())
             current_in_features = hidden_features
         linear = Linear(
             num_experts=num_experts,
@@ -96,8 +176,30 @@ class FeedForward(nn.Module):
             out_features=out_features,
             bias=bias,
         )
-        layers.append(linear)
-        self._model = nn.Sequential(*layers)
+        self._layers.append(linear)
+        self._model = Sequential(*self._layers)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the FeedForward.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the FeedForward.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}FeedForward ({num_parameters} parameters)\n"
+        summary += f"Layers:\n"
+        for i, layer in enumerate(self._layers):
+            summary += f"{prefix}  Layer {i}:\n"
+            summary += layer.summary(prefix=prefix + "\t")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
         return self._model(x)
@@ -162,13 +264,36 @@ class FeedForwardPAL(nn.Module):
             self._project_up_module = PALLayer.get_project_up_module(output_size=hidden_features, pal_size=pal_features)
             self._project_down_module = PALLayer.get_project_down_module(input_size=hidden_features, pal_size=pal_features)
         
-        self._layers: nn.ModuleList[PALLayer] = nn.ModuleList()
+        self._layers: ModuleList[PALLayer] = ModuleList()
         self._layers.append(PALLayer(input_size=in_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=None, project_up_module=self._project_up_module, activation=activation))
         for _ in range(1, num_layers - 1):
             pal_layer = PALLayer(input_size=hidden_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=self._project_up_module, activation=activation)
             self._layers.append(pal_layer)
         self._layers.append(PALLayer(input_size=hidden_features, output_size=out_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=None, activation=nn.Identity()))
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the FeedForward PAL.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the FeedForward PAL.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}FeedForwardPAL ({num_parameters} parameters)\n"
+        summary += f"Shared projection: {self._shared_projection}\n"
+        summary += f"Use residual connections: {self._use_residual_connections}\n"
+        summary += f"Layers:\n"
+        for i, layer in enumerate(self._layers):
+            summary += f"{prefix}  Layer {i}:\n"
+            summary += layer.summary(prefix=prefix + "\t")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
         # Here we simply apply the PAL layers one after the other
@@ -237,6 +362,23 @@ class MaskCache:
         self.keys_to_cache = {key for key in keys_to_cache if key != batch_size}
         # This is a hack to get some speed up, by reusing the mask
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the MaskCache.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the MaskCache.
+        """
+        summary: str = ""
+        summary = f"{prefix}Mask cache\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
     def get_mask(self, task_info: TaskInfo) -> TensorType:
         """Get the mask corresponding to a given task info.
 
@@ -274,6 +416,23 @@ class MixtureOfExperts(nn.Module):
         super().__init__()
         self.multitask_cfg = multitask_cfg
         self.mask_cache: MaskCache
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the MixtureOfExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the MixtureOfExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}Mixture of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, task_info: TaskInfo) -> TensorType:
         return self.mask_cache.get_mask(task_info=task_info)
@@ -318,6 +477,27 @@ class AttentionBasedExperts(MixtureOfExperts):
         self.trunk.apply(agent_utils.weight_init)
         self.topk = topk
         self._softmax = torch.nn.Softmax(dim=1)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the AttentionBasedExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the AttentionBasedExperts.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}AttentionBasedExperts ({num_parameters} parameters)\n"
+        summary += f"{prefix}Trunk:\n"
+        summary += self.trunk.summary(prefix=prefix + "\t")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, task_info: TaskInfo) -> TensorType:
         if self.should_use_task_encoding:
@@ -395,6 +575,23 @@ class ClusterOfExperts(MixtureOfExperts):
             task_index_to_mask=task_index_to_encoder_index,
         )
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the ClusterOfExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the ClusterOfExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}Cluster of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
 
 class OneToOneExperts(MixtureOfExperts):
     def __init__(
@@ -423,6 +620,23 @@ class OneToOneExperts(MixtureOfExperts):
             task_index_to_mask=torch.eye(num_tasks),
         )
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the OneToOneExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the OneToOneExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}One to one mapping of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
 
 class EnsembleOfExperts(MixtureOfExperts):
     def __init__(
@@ -450,3 +664,20 @@ class EnsembleOfExperts(MixtureOfExperts):
             batch_size=batch_size,
             task_index_to_mask=torch.ones(num_tasks, num_experts),
         )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the EnsembleOfExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the EnsembleOfExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}Ensemble of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()

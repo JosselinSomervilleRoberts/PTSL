@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 
 from mtrl.agent.components import base as base_component
+from mtrl.agent.components import moe_layer
 from mtrl.utils.types import ConfigType, ModelType, TensorType
 
 
@@ -39,7 +40,7 @@ class PixelDecoder(base_component.Component):
 
         self.fc = nn.Linear(feature_dim, num_filters * self.out_dim * self.out_dim)
 
-        self.deconvs = nn.ModuleList()
+        self.deconvs = moe_layer.ModuleList()
 
         for _ in range(self.num_layers - 1):
             self.deconvs.append(
@@ -50,6 +51,28 @@ class PixelDecoder(base_component.Component):
                 num_filters, env_obs_shape[0], 3, stride=2, output_padding=1
             )
         )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the PixelDecoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the PixelDecoder.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}PixelDecoder ({num_parameters} parameters)\n"
+        summary += f"{prefix}\tDeconvs:\n"
+        for i, deconv in enumerate(self.deconvs):
+            summary += f"{prefix}\t\tDeconv {i}: {deconv}\n"
+        summary += f"{prefix}\tFC: {self.fc}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, h: TensorType) -> TensorType:
         h = torch.relu(self.fc(h))

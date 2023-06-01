@@ -120,6 +120,36 @@ class PALLayer(nn.Module):
     def set_indices(self, indices: torch.Tensor) -> None:
         self.indices = indices.reshape(-1)
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the PALLayer.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the PALLayer.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}PALLayer ({num_parameters} parameters)\n"
+        summary += f"{prefix}\tShared Linear: {self.shared_linear}\n"
+        if self._project_down:
+            summary += f"{prefix}\tProject Down: {self.project_down_module}\n"
+        else:
+            summary += f"{prefix}\tProject Down: None\n"
+        if self._project_up:
+            summary += f"{prefix}\tProject Up: {self.project_up_module}\n"
+        else:
+            summary += f"{prefix}\tProject Up: None\n"
+        summary += f"{prefix}\tIndividual Linears:\n"
+        summary += f"{prefix}\t\tWeight: Tensor ({self.individual_linears_weight.shape})\n"
+        summary += f"{prefix}\t\tBias: Tensor ({self.individual_linears_bias.shape})\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.indices is None:
             assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"

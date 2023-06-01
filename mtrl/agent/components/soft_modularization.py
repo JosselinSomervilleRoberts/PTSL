@@ -12,7 +12,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from mtrl.agent.components.base import Component as BaseComponent
-from mtrl.agent.components.moe_layer import Linear
+from mtrl.agent.components.moe_layer import Linear, Sequential, ModuleList
 from mtrl.agent.ds.mt_obs import MTObs
 from mtrl.utils.types import TensorType
 
@@ -42,7 +42,7 @@ class SoftModularizedMLP(BaseComponent):
                 out_features=hidden_features,
                 bias=bias,
             )
-            layers.append(nn.Sequential(linear, nn.ReLU()))
+            layers.append(Sequential(linear, nn.ReLU()))
             # Each layer is a combination of a moe layer and ReLU.
             current_in_features = hidden_features
         linear = Linear(
@@ -52,13 +52,35 @@ class SoftModularizedMLP(BaseComponent):
             bias=bias,
         )
         layers.append(linear)
-        self.layers = nn.ModuleList(layers)
+        self.layers = ModuleList(layers)
         self.routing_network = RoutingNetwork(
             in_features=in_features,
             hidden_features=hidden_features,
             num_layers=num_layers - 1,
             num_experts_per_layer=num_experts,
         )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the SoftModularizedMLP.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the SoftModularizedMLP.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Soft Modularized MLP ({num_parameters} parameters)\n"
+        summary += f"{prefix}Routing Network:\n"
+        summary += self.routing_network.summary(prefix=f"{prefix}\t")
+        summary += f"{prefix}Layers:\n"
+        summary += self.layers.summary(prefix=f"{prefix}\t")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, mtobs: MTObs) -> TensorType:
         probs = self.routing_network(mtobs=mtobs)
@@ -102,7 +124,7 @@ class RoutingNetwork(BaseComponent):
             out_features=hidden_features,
         )
 
-        self.W_d = nn.ModuleList(
+        self.W_d = ModuleList(
             [
                 nn.Linear(
                     in_features=hidden_features,
@@ -112,7 +134,7 @@ class RoutingNetwork(BaseComponent):
             ]
         )
 
-        self.W_u = nn.ModuleList(
+        self.W_u = ModuleList(
             [
                 nn.Linear(
                     in_features=self.num_experts_per_layer ** 2,
@@ -135,6 +157,29 @@ class RoutingNetwork(BaseComponent):
         # next layer, logprob[batch_index][i][:] to 1
         prob = self._softmax(logprob)
         return prob
+    
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the RoutingNetwork.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the RoutingNetwork.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Routing Network ({num_parameters} parameters)\n"
+        summary += f"{prefix}Projection Before Routing: {self.projection_before_routing}\n"
+        summary += f"{prefix}W_d:\n"
+        summary += self.W_d.summary(prefix=f"{prefix}\t")
+        summary += f"{prefix}W_u:\n"
+        summary += self.W_u.summary(prefix=f"{prefix}\t")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, mtobs: MTObs) -> TensorType:
         obs = mtobs.env_obs

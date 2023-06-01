@@ -76,6 +76,26 @@ class QFunction(base_component.Component):
                 in_features=obs_dim + action_dim, out_features=obs_dim
             )
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the actor.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the actor.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Qfunction ({num_parameters} parameters)\n"
+        summary += self.model.summary(prefix=prefix + "\t")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
     def _make_head(
         self,
         input_dim: int,
@@ -231,7 +251,7 @@ class QFunction(base_component.Component):
                     num_layers=num_layers,
                     multitask_cfg=multitask_cfg,
                 )
-                return nn.Sequential(trunk, nn.ReLU(), heads)
+                return moe_layer.Sequential(trunk, nn.ReLU(), heads)
         else:
             trunk = self._make_trunk(
                 obs_dim=obs_dim,
@@ -354,6 +374,31 @@ class Critic(base_component.Component):
         )
 
         self.apply(agent_utils.weight_init)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the actor.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the actor.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Critic ({num_parameters} parameters)\n"
+        summary += f"{prefix}Encoder:\n"
+        summary += self.encoder.summary(prefix=prefix + "\t")
+        summary += f"{prefix}Q1:\n"
+        summary += self.Q1.summary(prefix=prefix + "\t")
+        summary += f"{prefix}Q2:\n"
+        summary += self.Q2.summary(prefix=prefix + "\t")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def _make_encoder(
         self,
