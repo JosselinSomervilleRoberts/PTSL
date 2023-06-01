@@ -65,12 +65,14 @@ def preprocess_obs(obs: TensorType, bits=5) -> TensorType:
 
 
 def weight_init_linear(m: ModelType):
-    assert isinstance(m.weight, TensorType)
-    nn.init.xavier_uniform_(m.weight)
     # Check if bias exists
     if hasattr(m.bias, "data"):
+        assert isinstance(m.weight, TensorType)
+        nn.init.xavier_uniform_(m.weight)
         assert isinstance(m.bias, TensorType)
         nn.init.zeros_(m.bias)
+    else:
+        nn.init.zeros_(m.weight)
 
 
 def weight_init_conv(m: ModelType):
