@@ -1,13 +1,37 @@
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, Tuple
 from toolbox.printing import debug as print_debug
 
 
 class PALLayer(nn.Module):
-    """Implementation of a PAL Layer."""
+    """
+    Implementation of a PAL Layer.
 
-    def __init__(self, input_size: int, output_size: int, pal_size: int, n_tasks: int, project_down: Optional[nn.Linear] = None, project_up: Optional[nn.Linear] = None, activation: nn.Module = nn.ReLU(), debug: bool = False):
+    A given output x will go through a shqred linear layer SL
+    and a low-rank task specific linear layer TL(i).
+    There are to matrices D and U to down project x to the input dimension
+    of TL(i) and to up project the output of TL(i) to match the final
+    output size. An activation function is added at the end.
+    So, y = activation( SL(x) + U @ TL(i)( D @ x ) )
+    
+    A twist is that depending on the input size, it might take less parameters
+    to directly have TL go from input_size to pal_size. If this is the case, then
+    the down projection D will just be the identity.
+    The similar concept applies for the upsampling U.
+
+    This implementation assumes that the batch size is equal to the number of tasks.
+    """
+
+    @staticmethod
+    def get_project_down_module(input_size: int, pal_size: int) -> nn.Linear:
+        return nn.Linear(in_features=input_size, out_features=pal_size, bias=False)
+    
+    @staticmethod
+    def get_project_up_module(output_size: int, pal_size: int) -> nn.Linear:
+        return nn.Linear(in_features=pal_size, out_features=output_size, bias=False)
+
+    def __init__(self, input_size: int, output_size: int, pal_size: int, n_tasks: int, project_down_module: Optional[nn.Linear] = None, project_up_module: Optional[nn.Linear] = None, activation: nn.Module = nn.ReLU(), debug: bool = False):
         super(PALLayer, self).__init__()
         self.activation = activation
         self.n_tasks = n_tasks
@@ -19,48 +43,80 @@ class PALLayer(nn.Module):
         # Shared Linear, it is a vanilla Linear layer
         self.shared_linear = nn.Linear(input_size, output_size)
 
-        # Individual Linear. This represents n_tasks linear layers of pal_size to pal_size
-        self.individual_linears_weight = nn.Parameter(torch.randn(n_tasks, pal_size, pal_size))
-        self.individual_linears_bias = nn.Parameter(torch.zeros(n_tasks, pal_size))
-
         # Project Down
-        self.project_down = project_down
-        if self.project_down is None:
-            self.project_down = nn.Linear(in_features=input_size, out_features=pal_size, bias=False)
-        assert self.project_down.in_features == input_size
-        assert self.project_down.out_features == pal_size
+        if project_down_module is None:
+            # First figure out if it is better to project down or simply skip the projection
+            n_parameters_with_projection: int = input_size * pal_size + n_tasks * (pal_size + 1) * pal_size
+            n_parameteres_without_projection: int = n_tasks * (input_size + 1) * pal_size
+            self._project_down = (n_parameters_with_projection <= n_parameteres_without_projection)
+            self. _input_pal_size = pal_size if self._project_down else input_size
+            if self._project_down:
+                self.project_down_module = PALLayer.get_project_down_module(input_size=input_size, pal_size=pal_size)
+            else:
+                self.project_down_module = nn.Identity()
+            if self._debug:
+                print("Project down decision:")
+                print(f" - Num. params. with projection: {n_parameters_with_projection}")
+                print(f" - Num. params. without projection: {n_parameteres_without_projection}")
+                print(f"-> Decision: Use projection? {self._project_down}\n")
+        else:
+            self.project_down_module = project_down_module
+            self._project_down = True
+            self. _input_pal_size = pal_size
+            assert self.project_down_module.in_features == input_size, f"Expected project_down_module to have input features of size {input_size}, got {self.project_down_module.in_features}"
+            assert self.project_down_module.out_features == pal_size, f"Expected project_down_module to have output features of size {pal_size}, got {self.project_down_module.out_features}"
 
         # Project Up
-        self.project_up = project_up
-        if self.project_up is None:
-            self.project_up = nn.Linear(in_features=pal_size, out_features=output_size, bias=False)
-        assert self.project_up.in_features == pal_size
-        assert self.project_up.out_features == output_size
+        if project_up_module is None:
+            # First figure out if it is better to project up or simply skip the projection
+            n_parameters_with_projection: int = output_size * pal_size + n_tasks * (self._input_pal_size + 1) * pal_size
+            n_parameters_without_projection: int = n_tasks * (self._input_pal_size + 1) * output_size
+            self._project_up = (n_parameters_with_projection <= n_parameters_without_projection)
+            self._output_pal_size = pal_size if self._project_up else output_size
+            if self._project_up:
+                self.project_up_module = PALLayer.get_project_up_module(output_size=output_size, pal_size=pal_size)
+            else:
+                self.project_up_module = nn.Identity()
+            if self._debug:
+                print("Project up decision:")
+                print(f" - Num. params. with projection: {n_parameters_with_projection}")
+                print(f" - Num. params. without projection: {n_parameters_without_projection}")
+                print(f"-> Decision: Use projection? {self._project_up}\n")
+        else:
+            self.project_up_module = project_up_module
+            self._project_up = True
+            self._output_pal_size = pal_size
+            assert self.project_up_module.in_features == pal_size, f"Expected project_up_module to have input features of size {pal_size}, got {self.project_up_module.in_features}"
+            assert self.project_up_module.out_features == output_size, f"Expected project_up_module to have output features of size {output_size}, got {self.project_up_module.out_features}"
 
-    def set_shared_linear(self, weights: torch.Tensor, bias: torch.Tensor):
+        # Individual Linear. This represents n_tasks linear layers of _input_al_size to _output_pal_size
+        self.individual_linears_weight = nn.Parameter(torch.randn(n_tasks, self._input_pal_size, self._output_pal_size))
+        self.individual_linears_bias = nn.Parameter(torch.zeros(n_tasks, self._output_pal_size))
+
+    def set_shared_linear(self, weights: torch.Tensor, bias: torch.Tensor) -> None:
         assert weights.shape == (self.output_size, self.input_size), f"Expected shape for shared weight {(self.output_size, self.input_size)}, got {weights.shape}"
         assert bias.shape == (self.output_size,), f"Expected shape for shared bias {(self.output_size,)}, got {bias.shape}"
         self.shared_linear.weight = nn.Parameter(weights)
         self.shared_linear.bias = nn.Parameter(bias)
 
-    def set_individual_linear(self, task_id: int, weights: torch.Tensor, bias: torch.Tensor):
-        assert weights.shape == (self.pal_size, self.pal_size), f"Expected shape for individual weight {task_id} {(self.pal_size, self.pal_size)}, got {weights.shape}"
+    def set_individual_linear(self, task_id: int, weights: torch.Tensor, bias: torch.Tensor) -> None:
+        assert weights.shape == (self._input_pal_size, self._output_pal_size), f"Expected shape for individual weight {task_id} {(self.pal_size, self.pal_size)}, got {weights.shape}"
         assert bias.shape == (self.pal_size,), f"Expected shape for individual bias {task_id} {(self.pal_size,)}, got {bias.shape}"
         self.individual_linears_weight.data[task_id] = weights
         self.individual_linears_bias.data[task_id] = bias
 
-    def set_project_down(self, weights: torch.Tensor):
-        assert weights.shape == (self.pal_size, self.input_size), f"Expected shape for project down {(self.pal_size, self.input_size)}, got {weights.shape}"
-        self.project_down.weight = nn.Parameter(weights)
+    def set_project_down(self, weights: torch.Tensor) -> None:
+        assert weights.shape == (self._input_pal_size, self.input_size), f"Expected shape for project down {(self.pal_size, self.input_size)}, got {weights.shape}"
+        self.project_down_module.weight = nn.Parameter(weights)
 
-    def set_project_up(self, weights: torch.Tensor):
-        assert weights.shape == (self.output_size, self.pal_size), f"Expected shape for project up {(self.output_size, self.pal_size)}, got {weights.shape}"
-        self.project_up.weight = nn.Parameter(weights)
+    def set_project_up(self, weights: torch.Tensor) -> None:
+        assert weights.shape == (self.output_size, self._input_pal_size), f"Expected shape for project up {(self.output_size, self.pal_size)}, got {weights.shape}"
+        self.project_up_module.weight = nn.Parameter(weights)
 
-    def set_debug(self, debug: bool):
+    def set_debug(self, debug: bool) -> None:
         self._debug = debug
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         assert x.shape == (self.n_tasks, self.input_size), f"Expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
         if self._debug: print_debug(x)
 
@@ -70,7 +126,7 @@ class PALLayer(nn.Module):
 
         # Individual linears
         # 1. Project down
-        x_down = self.project_down(x)
+        x_down = self.project_down_module(x)
         if self._debug: print_debug(x_down)
 
         # 2. Compute X @ Wi for all i efficiently using broadcasting
@@ -80,7 +136,7 @@ class PALLayer(nn.Module):
         if self._debug: print_debug(y_down)
 
         # 3. Project up
-        y_individual = self.project_up(y_down)
+        y_individual = self.project_up_module(y_down)
         if self._debug: print_debug(y_individual)
 
         # Sum and apply activation
@@ -88,3 +144,85 @@ class PALLayer(nn.Module):
         y = self.activation(y)
         if self._debug: print_debug(y)
         return y
+    
+    def residual_forward(self, x: torch.Tensor, residual_x_down: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Similar to forward but add residual_x_down to x_down before computing the individual linears."""
+        assert x.shape == (self.n_tasks, self.input_size), f"Expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
+        assert residual_x_down is None or residual_x_down.shape == (self.n_tasks, self._input_pal_size), f"Expected shape {(self.n_tasks, self._input_pal_size)}, got {residual_x_down.shape}"
+        if self._debug: print_debug(x)
+
+        # Shared linear
+        y_shared = self.shared_linear(x)
+        if self._debug: print_debug(y_shared)
+
+        # Individual linears
+        # 1. Project down
+        x_down = self.project_down_module(x)
+        if self._debug: print_debug(x_down)
+        if residual_x_down is not None:
+            x_down = x_down + residual_x_down
+            if self._debug: print_debug(x_down)
+
+        # 2. Compute X @ Wi for all i efficiently using broadcasting
+        x_down = x_down.unsqueeze(1)
+        y_down = torch.matmul(x_down, self.individual_linears_weight)
+        y_down = y_down.squeeze(1) + self.individual_linears_bias
+        if self._debug: print_debug(y_down)
+
+        # 3. Project up
+        y_individual = self.project_up_module(y_down)
+        if self._debug: print_debug(y_individual)
+
+        # Sum and apply activation
+        y = y_shared + y_individual
+        y = self.activation(y)
+        if self._debug: print_debug(y)
+        return y, y_down
+    
+    @staticmethod
+    def compute_number_of_parameters(input_size: int, output_size: int, pal_size: int, n_tasks: int, project_down: bool, project_up: bool, must_project_down: bool = False, must_project_up: bool = False) -> int:
+        """
+        Computes the number of parameters of a PAL Layer with the given parameters.
+        Args:
+            input_size: Size of the input.
+            output_size: Size of the output.
+            pal_size: Size of the PAL layer.
+            n_tasks: Number of tasks.
+            project_down: Whether to create a projection matrix or not.
+            project_up: Whether to create a projection matrix or not.
+            must_project_down: Whether to force the projection down or not.
+            must_project_up: Whether to force the projection up or not.
+        Returns:
+            The number of parameters of the PAL Layer.
+        """
+
+        n_parameters = 0
+
+        # Shared Linear
+        n_parameters += output_size * input_size + output_size
+
+        # Project Down
+        # Figure out if it is better to project down or simply skip the projection
+        n_parameters_with_projection = input_size * pal_size + n_tasks * (pal_size + 1) * pal_size
+        n_parameteres_without_projection = n_tasks * (input_size + 1) * pal_size
+        if n_parameters_with_projection <= n_parameteres_without_projection or must_project_down:
+            if project_down: n_parameters += input_size * pal_size
+            input_pal_size = pal_size
+        else:
+            input_pal_size = input_size
+
+
+        # Project Up
+        # Figure out if it is better to project up or simply skip the projection
+        n_parameters_with_projection = output_size * pal_size + n_tasks * (input_pal_size + 1) * pal_size
+        n_parameters_without_projection = n_tasks * (input_pal_size + 1) * output_size
+        if n_parameters_with_projection <= n_parameters_without_projection or must_project_up:
+            if project_up: n_parameters += output_size * pal_size
+            output_pal_size = pal_size
+        else:
+            output_pal_size = output_size
+
+        # Individual Linear
+        n_parameters += n_tasks * input_pal_size * output_pal_size + n_tasks * output_pal_size
+
+        return n_parameters
