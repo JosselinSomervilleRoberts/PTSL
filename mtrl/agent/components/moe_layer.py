@@ -266,7 +266,7 @@ class FeedForwardPAL(nn.Module):
         self._residual_mode = residual_mode
         self._debug = debug
 
-        self._project_up_module, self._project_down_module, self._residual_project, self._residual_alpha = None, None, None, None
+        self._project_up_module, self._project_down_module, self._residual_project_module, self._residual_alpha = None, None, None, None
         if self._shared_projection:
             self._project_up_module = PALLayer.get_project_up_module(output_size=hidden_features, pal_size=pal_features)
             self._project_down_module = PALLayer.get_project_down_module(input_size=hidden_features, pal_size=pal_features)
