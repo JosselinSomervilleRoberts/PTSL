@@ -303,7 +303,7 @@ class Actor(BaseActor):
         output_dim: int,
         num_layers: int,
         shared_projection: bool,
-        use_residual_connections: bool,
+        residual_mode: str,
         multitask_cfg: ConfigType,
     ):
         return moe_layer.FeedForwardPAL(
@@ -314,7 +314,7 @@ class Actor(BaseActor):
             hidden_features=hidden_dim,
             pal_features=pal_dim,
             shared_projection=shared_projection,
-            use_residual_connections=use_residual_connections,
+            residual_mode=residual_mode,
         )      
 
     def _make_trunk(
@@ -398,7 +398,7 @@ class Actor(BaseActor):
                 output_dim=model_output_dim,
                 num_layers=num_layers,
                 shared_projection=multitask_cfg.pal_cfg.shared_projection,
-                use_residual_connections=multitask_cfg.pal_cfg.use_residual_connections,
+                residual_mode=multitask_cfg.pal_cfg.residual_mode,
                 multitask_cfg=multitask_cfg,
             )
             return model
