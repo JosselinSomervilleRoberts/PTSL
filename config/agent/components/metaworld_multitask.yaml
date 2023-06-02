@@ -7,7 +7,7 @@ should_use_multi_head_policy: False
 should_use_pal: False
 should_use_disjoint_policy: False # experimental. This variable is ignored if should_use_multi_head_policy is set to False.
 pal_cfg:
-  pal_dim: 100
+  pal_dim: 50
   shared_projection: True
   use_residual_connections: False
 task_encoder_cfg:
