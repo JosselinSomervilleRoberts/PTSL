@@ -40,7 +40,7 @@ def start_wandb(config, seed: int = -1):
         "batch_size": config.replay_buffer.batch_size,
         "pal/dim": config.agent.multitask.pal_cfg.pal_dim,
         "pal/shared": config.agent.multitask.pal_cfg.shared_projection,
-        "pal/residual": config.agent.multitask.pal_cfg.use_residual_connections,
+        "pal/residual": config.agent.multitask.pal_cfg.residual_mode,
     }
     wandb.init(project=f"MTRL{config.agent.multitask.num_envs}", name=wandb_name, group=group_wandb, config=config_wandb)
 
