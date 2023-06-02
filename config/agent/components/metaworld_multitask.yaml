@@ -9,7 +9,7 @@ should_use_disjoint_policy: False # experimental. This variable is ignored if sh
 pal_cfg:
   pal_dim: 100
   shared_projection: True
-  use_residual_connections: False
+  residual_mode: ["none", "sum", "linear", "project"]
 task_encoder_cfg:
   model_cfg:
     _target_: mtrl.agent.components.task_encoder.TaskEncoder

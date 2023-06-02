@@ -16,9 +16,9 @@ from toolbox.printing import print_visible
 
 
 def start_wandb(config, seed: int = -1):
-    wandb_seed = seed if seed >= 0 else config.setup.seed
-    wandb_name = f"{config.name}_{wandb_seed}"
-    group_wandb = config.name
+    wandb_seed = seed if seed >= 0 else config.setup.seed_ref
+    wandb_name = f"{config.setup.name}_{wandb_seed}"
+    group_wandb = config.setup.name
     config_wandb = {
         "num_tasks": config.agent.multitask.num_envs,
         "agent": config.agent.name,
@@ -67,11 +67,11 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
 
 @hydra.main(config_path="config", config_name="config")
 def launch(config: ConfigType) -> None:
-    seed_ref = config.setup.seed
+    seed_ref = config.setup.seed_ref
     config = config_utils.process_config(config)
     time_start = time.time()
 
-    for seed_inc in range(config.num_seeds):
+    for seed_inc in range(config.setup.num_seeds):
         seed = seed_ref + seed_inc
         launch_one_seed(config, seed=seed, time_start=time_start)
     shutdown()

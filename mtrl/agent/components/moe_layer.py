@@ -246,8 +246,8 @@ class FeedForwardPAL(nn.Module):
         hidden_features: int,
         pal_features: int,
         shared_projection: bool = True,
-        use_residual_connections: bool = False,
         activation: nn.Module = nn.ReLU(),
+        residual_mode: str = "none",
         debug: bool = False,
     ):
         """
@@ -263,20 +263,25 @@ class FeedForwardPAL(nn.Module):
         super().__init__()
         self._n_tasks = n_tasks
         self._shared_projection = shared_projection
-        self._use_residual_connections = use_residual_connections
+        self._residual_mode = residual_mode
         self._debug = debug
 
-        self._project_up_module, self._project_down_module = None, None
+        self._project_up_module, self._project_down_module, self._residual_project, self._residual_alpha = None, None, None, None
         if self._shared_projection:
             self._project_up_module = PALLayer.get_project_up_module(output_size=hidden_features, pal_size=pal_features)
             self._project_down_module = PALLayer.get_project_down_module(input_size=hidden_features, pal_size=pal_features)
+        if self._residual_mode == "linear":
+            self._residual_alpha = nn.Parameter(torch.ones(3) / 3.0)
+        elif self._residual_mode == "project":
+            self._residual_project_module = PALLayer.get_project_down_module(input_size=3*pal_features, pal_size=pal_features)
+        
         
         self._layers: ModuleList[PALLayer] = ModuleList()
-        self._layers.append(PALLayer(input_size=in_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=None, project_up_module=self._project_up_module, activation=activation))
+        self._layers.append(PALLayer(input_size=in_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=None, project_up_module=self._project_up_module, activation=activation, residual_mode="none"))
         for _ in range(1, num_layers - 1):
-            pal_layer = PALLayer(input_size=hidden_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=self._project_up_module, activation=activation)
+            pal_layer = PALLayer(input_size=hidden_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=self._project_up_module, activation=activation, residual_mode=self._residual_mode, residual_project_module=self._residual_project_module, residual_alpha=self._residual_alpha)
             self._layers.append(pal_layer)
-        self._layers.append(PALLayer(input_size=hidden_features, output_size=out_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=None, activation=nn.Identity()))
+        self._layers.append(PALLayer(input_size=hidden_features, output_size=out_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=None, activation=nn.Identity(), residual_mode=self._residual_mode, residual_project_module=self._residual_project_module, residual_alpha=self._residual_alpha))
 
     def summary(self, prefix: str = "") -> str:
         """Summary of the FeedForward PAL.
@@ -292,10 +297,14 @@ class FeedForwardPAL(nn.Module):
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
         summary += f"{prefix}FeedForwardPAL " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         summary += f"{prefix}Shared projection: {self._shared_projection}\n"
-        summary += f"{prefix}Use residual connections: {self._use_residual_connections}\n"
+        summary += f"{prefix}Residual mode: {self._residual_mode}\n"
+        if self._residual_mode == "linear":
+            summary += f"{prefix}    Residual alpha: {self._residual_alpha}\n"
+        elif self._residual_mode == "project":
+            summary += f"{prefix}    Residual project module: {self._residual_project_module}\n"
         summary += f"{prefix}" + str_with_color("Layers:", "bold") + "\n"
         for i, layer in enumerate(self._layers):
-            summary += f"{prefix}  " + str_with_color(f"Layer {i}:", "bold") + "\n"
+            summary += f"{prefix}    " + str_with_color(f"Layer {i}:", "bold") + "\n"
             summary += layer.summary(prefix=prefix + "    ")
         return summary
     
@@ -307,7 +316,7 @@ class FeedForwardPAL(nn.Module):
         # The only twist it if we use_residual_connections, in which case
         # we add the downsampled output to the downsampled input of the next layer.
 
-        if not self._use_residual_connections:
+        if self._residual_mode == "none":
             for layer in self._layers:
                 x = layer(x)
                 if self._debug: print_debug(x)
@@ -315,12 +324,13 @@ class FeedForwardPAL(nn.Module):
         
         # If we use residual connections, we need to keep track of the downsampled
         # outputs
-        x_down = None
+        x_down, y_down = None, None
         for layer in self._layers:
-            x, x_down = layer.residual_forward(x, x_down)
+            x, y_down, x_down = layer.residual_forward(x, x_down, y_down)
             if self._debug:
                 print_debug(x)
                 print_debug(x_down)
+                print_debug(y_down)
         return x
 
     def set_indices(self, indices: torch.Tensor) -> None:
