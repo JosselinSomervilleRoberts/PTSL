@@ -59,7 +59,7 @@ def test_feedforward_pal_number_of_parameters():
 
     for _ in range(N_TESTS):
         in_dim, out_dim, hidden_dim, pal_dim, n_tasks = torch.randint(1, 100, (5,))
-        n_layers = torch.randint(2, 10, (1,))
+        n_layers = torch.randint(1, 10, (1,))
         shared_projection = torch.randint(0, 2, (1,)).bool()
 
         model = FeedForwardPAL(
