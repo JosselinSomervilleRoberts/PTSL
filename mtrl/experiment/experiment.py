@@ -5,7 +5,7 @@ import json
 import os
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple
-from toolbox.printing import print_visible
+from toolbox.printing import print_visible, str_with_color
 
 import hydra
 import torch

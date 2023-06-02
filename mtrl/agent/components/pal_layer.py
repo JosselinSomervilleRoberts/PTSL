@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from typing import Optional, Tuple
 from toolbox.printing import debug as print_debug
+from toolbox.printing import str_with_color
 
 
 class PALLayer(nn.Module):
@@ -132,19 +133,19 @@ class PALLayer(nn.Module):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}PALLayer ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tShared Linear: {self.shared_linear}\n"
+        summary += f"{prefix}PALLayer " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Shared Linear: {self.shared_linear}\n"
         if self._project_down:
-            summary += f"{prefix}\tProject Down: {self.project_down_module}\n"
+            summary += f"{prefix}    Project Down: {self.project_down_module}\n"
         else:
-            summary += f"{prefix}\tProject Down: None\n"
+            summary += f"{prefix}    Project Down: None\n"
         if self._project_up:
-            summary += f"{prefix}\tProject Up: {self.project_up_module}\n"
+            summary += f"{prefix}    Project Up: {self.project_up_module}\n"
         else:
-            summary += f"{prefix}\tProject Up: None\n"
-        summary += f"{prefix}\tIndividual Linears:\n"
-        summary += f"{prefix}\t\tWeight: Tensor ({self.individual_linears_weight.shape})\n"
-        summary += f"{prefix}\t\tBias: Tensor ({self.individual_linears_bias.shape})\n"
+            summary += f"{prefix}    Project Up: None\n"
+        summary += f"{prefix}    Individual Linears:\n"
+        summary += f"{prefix}        Weight: Tensor ({self.individual_linears_weight.shape})\n"
+        summary += f"{prefix}        Bias: Tensor ({self.individual_linears_bias.shape})\n"
         return summary
     
     def __repr__(self) -> str:

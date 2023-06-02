@@ -3,6 +3,7 @@
 """Decoder component for the agent."""
 
 from typing import List
+from toolbox.printing import str_with_color
 
 import torch
 import torch.nn as nn
@@ -64,11 +65,11 @@ class PixelDecoder(base_component.Component):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}PixelDecoder ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tDeconvs:\n"
+        summary += f"{prefix}PixelDecoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Deconvs:\n"
         for i, deconv in enumerate(self.deconvs):
-            summary += f"{prefix}\t\tDeconv {i}: {deconv}\n"
-        summary += f"{prefix}\tFC: {self.fc}\n"
+            summary += f"{prefix}        Deconv {i}: {deconv}\n"
+        summary += f"{prefix}    FC: {self.fc}\n"
         return summary
     
     def __repr__(self) -> str:

@@ -3,6 +3,7 @@
 """Critic component for the agent."""
 
 from typing import List, Tuple
+from toolbox.printing import str_with_color
 
 import torch
 from torch import nn
@@ -88,8 +89,8 @@ class QFunction(base_component.Component):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Qfunction ({num_parameters} parameters)\n"
-        summary += self.model.summary(prefix=prefix + "\t")
+        summary += f"{prefix}Qfunction " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += self.model.summary(prefix=prefix + "    ")
         summary += "\n"
         return summary
     
@@ -251,7 +252,7 @@ class QFunction(base_component.Component):
                     num_layers=num_layers,
                     multitask_cfg=multitask_cfg,
                 )
-                return moe_layer.Sequential(trunk, nn.ReLU(), heads)
+                return moe_layer.SequentialSum(trunk, nn.ReLU(), heads)
         else:
             trunk = self._make_trunk(
                 obs_dim=obs_dim,
@@ -387,13 +388,13 @@ class Critic(base_component.Component):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Critic ({num_parameters} parameters)\n"
-        summary += f"{prefix}Encoder:\n"
-        summary += self.encoder.summary(prefix=prefix + "\t")
-        summary += f"{prefix}Q1:\n"
-        summary += self.Q1.summary(prefix=prefix + "\t")
-        summary += f"{prefix}Q2:\n"
-        summary += self.Q2.summary(prefix=prefix + "\t")
+        summary += f"{prefix}Critic " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}" + str_with_color("Encoder:", "bold") + "\n"
+        summary += self.encoder.summary(prefix=prefix + "    ")
+        summary += f"{prefix}" + str_with_color("Q1:", "bold") + "\n"
+        summary += self.Q1.summary(prefix=prefix + "    ")
+        summary += f"{prefix}" + str_with_color("Q2:", "bold") + "\n"
+        summary += self.Q2.summary(prefix=prefix + "    ")
         summary += "\n"
         return summary
     

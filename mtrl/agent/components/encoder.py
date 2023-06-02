@@ -4,6 +4,7 @@
 
 from copy import deepcopy
 from typing import List, cast
+from toolbox.printing import str_with_color
 
 import torch
 import torch.nn as nn
@@ -117,12 +118,12 @@ class PixelEncoder(Encoder):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}PixelEncoder ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tConvs:\n"
+        summary += f"{prefix}PixelEncoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Convs:\n"
         for i, conv in enumerate(self.convs):
-            summary += f"{prefix}\t\tConv {i}: {conv}\n"
-        summary += f"{prefix}\tFC: {self.fc}\n"
-        summary += f"{prefix}\tLN: {self.ln}\n"
+            summary += f"{prefix}        Conv {i}: {conv}\n"
+        summary += f"{prefix}    FC: {self.fc}\n"
+        summary += f"{prefix}    LN: {self.ln}\n"
         return summary
     
     def __repr__(self) -> str:
@@ -272,10 +273,10 @@ class FeedForwardEncoder(Encoder):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}FeedForwardEncoder ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tTrunk:\n"
+        summary += f"{prefix}FeedForwardEncoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Trunk:\n"
         for i, layer in enumerate(self.trunk):
-            summary += f"{prefix}\t\tLayer {i}: {layer}\n"
+            summary += f"{prefix}        Layer {i}: {layer}\n"
         return summary
     
     def __repr__(self) -> str:
@@ -335,10 +336,10 @@ class FiLM(FeedForwardEncoder):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}FiLM Encoder ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tTrunk:\n"
+        summary += f"{prefix}FiLM Encoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Trunk:\n"
         for i, layer in enumerate(self.trunk):
-            summary += f"{prefix}\t\tLayer {i}: {layer}\n"
+            summary += f"{prefix}        Layer {i}: {layer}\n"
         return summary
     
     def __repr__(self) -> str:
@@ -429,11 +430,11 @@ class MixtureofExpertsEncoder(Encoder):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}MixtureofExpertsEncoder ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tSelection Network:\n"
-        summary += self.selection_network.summary(prefix=prefix + "\t\t")
-        summary += f"{prefix}\tMixture of Experts:\n"
-        summary += self.moe.summary(prefix=prefix + "\t\t")
+        summary += f"{prefix}MixtureofExpertsEncoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Selection Network:\n"
+        summary += self.selection_network.summary(prefix=prefix + "        ")
+        summary += f"{prefix}    Mixture of Experts:\n"
+        summary += self.moe.summary(prefix=prefix + "        ")
         return summary
     
     def __repr__(self) -> str:

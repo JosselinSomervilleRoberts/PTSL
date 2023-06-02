@@ -6,13 +6,14 @@ Link: https://arxiv.org/abs/2003.13661
 
 
 from typing import List
+from toolbox.printing import str_with_color
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from mtrl.agent.components.base import Component as BaseComponent
-from mtrl.agent.components.moe_layer import Linear, Sequential, ModuleList
+from mtrl.agent.components.moe_layer import Linear, SequentialSum, ModuleList
 from mtrl.agent.ds.mt_obs import MTObs
 from mtrl.utils.types import TensorType
 
@@ -42,7 +43,7 @@ class SoftModularizedMLP(BaseComponent):
                 out_features=hidden_features,
                 bias=bias,
             )
-            layers.append(Sequential(linear, nn.ReLU()))
+            layers.append(SequentialSum(linear, nn.ReLU()))
             # Each layer is a combination of a moe layer and ReLU.
             current_in_features = hidden_features
         linear = Linear(
@@ -72,11 +73,11 @@ class SoftModularizedMLP(BaseComponent):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Soft Modularized MLP ({num_parameters} parameters)\n"
+        summary += f"{prefix}Soft Modularized MLP " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         summary += f"{prefix}Routing Network:\n"
-        summary += self.routing_network.summary(prefix=f"{prefix}\t")
+        summary += self.routing_network.summary(prefix=f"{prefix}    ")
         summary += f"{prefix}Layers:\n"
-        summary += self.layers.summary(prefix=f"{prefix}\t")
+        summary += self.layers.summary(prefix=f"{prefix}    ")
         return summary
     
     def __repr__(self) -> str:
@@ -170,12 +171,12 @@ class RoutingNetwork(BaseComponent):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Routing Network ({num_parameters} parameters)\n"
+        summary += f"{prefix}Routing Network " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         summary += f"{prefix}Projection Before Routing: {self.projection_before_routing}\n"
         summary += f"{prefix}W_d:\n"
-        summary += self.W_d.summary(prefix=f"{prefix}\t")
+        summary += self.W_d.summary(prefix=f"{prefix}    ")
         summary += f"{prefix}W_u:\n"
-        summary += self.W_u.summary(prefix=f"{prefix}\t")
+        summary += self.W_u.summary(prefix=f"{prefix}    ")
         return summary
     
     def __repr__(self) -> str:

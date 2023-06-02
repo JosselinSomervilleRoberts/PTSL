@@ -16,12 +16,15 @@ from mtrl.agent.ds.task_info import TaskInfo
 from mtrl.utils.types import ConfigType, TensorType
 from mtrl.agent.components.pal_layer import PALLayer
 from toolbox.printing import debug as print_debug
-from wandb.vendor.pynvml.pynvml import NVML_THERMAL_CONTROLLER_NVSYSCON_CANOAS
+from toolbox.printing import str_with_color
 
 
 
-class Sequential(nn.Sequential):
+class SequentialSum(nn.Sequential):
     """Functions exactly as torch.nn.Sequential, but has a summary method."""
+
+    def __init__(self, *args: nn.Module) -> None:
+        super().__init__(*args)
 
     def summary(self, prefix: str = "") -> str:
         """Summary of the Sequential.
@@ -35,14 +38,14 @@ class Sequential(nn.Sequential):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Sequential ({num_parameters} parameters)\n"
+        summary += f"{prefix}Sequential " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         for i, layer in enumerate(self):
             # If the layer has a summary method, use it.
             if hasattr(layer, "summary"):
-                summary += f"{prefix}\tLayer {i}:\n"
-                summary += layer.summary(prefix=prefix + "\t\t")
+                summary += f"{prefix}    Layer {i}:\n"
+                summary += layer.summary(prefix=prefix + "        ")
             else:
-                summary += f"{prefix}\tLayer {i}: {layer}\n"
+                summary += f"{prefix}    Layer {i}: {layer}\n"
         return summary
     
     def __repr__(self) -> str:
@@ -50,6 +53,9 @@ class Sequential(nn.Sequential):
 
 class ModuleList(nn.ModuleList):
     """Functions exactly as torch.nn.ModuleList, but has a summary method."""
+
+    def __init__(self, *args: nn.Module) -> None:
+        super().__init__(*args)
 
     def summary(self, prefix: str = "") -> str:
         """Summary of the ModuleList.
@@ -63,14 +69,14 @@ class ModuleList(nn.ModuleList):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}ModuleList ({num_parameters} parameters)\n"
+        summary += f"{prefix}ModuleList " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         for i, layer in enumerate(self):
             # If the layer has a summary method, use it.
             if hasattr(layer, "summary"):
-                summary += f"{prefix}\tLayer {i}:\n"
-                summary += layer.summary(prefix=prefix + "\t\t")
+                summary += f"{prefix}    Layer {i}:\n"
+                summary += layer.summary(prefix=prefix + "        ")
             else:
-                summary += f"{prefix}\tLayer {i}: {layer}\n"
+                summary += f"{prefix}    Layer {i}: {layer}\n"
         return summary
     
     def __repr__(self) -> str:
@@ -114,12 +120,13 @@ class Linear(nn.Module):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Linear ({num_parameters} parameters)\n"
-        summary += f"{prefix}\tWeight: Tensor ({self.num_experts}, {self.in_features}, {self.out_features})\n"
+        summary += f"{prefix}Linear " + str_with_color(f"({num_parameters} parameters)", "purple")
+        summary += f"  Weight: Tensor ({self.num_experts}, {self.in_features}, {self.out_features})"
         if self.use_bias:
-            summary += f"{prefix}\tBias: Tensor ({self.num_experts}, 1, {self.out_features})\n"
+            summary += f"  Bias: Tensor ({self.num_experts}, 1, {self.out_features})"
         else:
-            summary += f"{prefix}\tBias: None\n"
+            summary += f"  Bias: None"
+        summary += "\n"
         return summary
     
     def __repr__(self) -> str:
@@ -177,7 +184,7 @@ class FeedForward(nn.Module):
             bias=bias,
         )
         self._layers.append(linear)
-        self._model = Sequential(*self._layers)
+        self._model = SequentialSum(*self._layers)
 
     def summary(self, prefix: str = "") -> str:
         """Summary of the FeedForward.
@@ -191,11 +198,10 @@ class FeedForward(nn.Module):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}FeedForward ({num_parameters} parameters)\n"
-        summary += f"Layers:\n"
+        summary += f"{prefix}FeedForward " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}" + str_with_color("Layers:", "bold") + "\n"
         for i, layer in enumerate(self._layers):
-            summary += f"{prefix}  Layer {i}:\n"
-            summary += layer.summary(prefix=prefix + "\t")
+            summary += f"{prefix}    " + str_with_color(f"Layer {i}:", "bold") + f" {layer}\n"
         return summary
     
     def __repr__(self) -> str:
@@ -283,13 +289,13 @@ class FeedForwardPAL(nn.Module):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}FeedForwardPAL ({num_parameters} parameters)\n"
-        summary += f"Shared projection: {self._shared_projection}\n"
-        summary += f"Use residual connections: {self._use_residual_connections}\n"
-        summary += f"Layers:\n"
+        summary += f"{prefix}FeedForwardPAL " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}Shared projection: {self._shared_projection}\n"
+        summary += f"{prefix}Use residual connections: {self._use_residual_connections}\n"
+        summary += f"{prefix}" + str_with_color("Layers:", "bold") + "\n"
         for i, layer in enumerate(self._layers):
-            summary += f"{prefix}  Layer {i}:\n"
-            summary += layer.summary(prefix=prefix + "\t")
+            summary += f"{prefix}  " + str_with_color(f"Layer {i}:", "bold") + "\n"
+            summary += layer.summary(prefix=prefix + "    ")
         return summary
     
     def __repr__(self) -> str:
@@ -490,9 +496,9 @@ class AttentionBasedExperts(MixtureOfExperts):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}AttentionBasedExperts ({num_parameters} parameters)\n"
+        summary += f"{prefix}AttentionBasedExperts " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         summary += f"{prefix}Trunk:\n"
-        summary += self.trunk.summary(prefix=prefix + "\t")
+        summary += self.trunk.summary(prefix=prefix + "    ")
         summary += "\n"
         return summary
     

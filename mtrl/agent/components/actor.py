@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from toolbox.printing import debug, sdebug
+from toolbox.printing import debug, sdebug, str_with_color
 
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.components import base as base_component
@@ -233,11 +233,11 @@ class Actor(BaseActor):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Actor ({num_parameters} parameters)\n"
-        summary += f"{prefix}Encoder:\n"
-        summary += self.encoder.summary(prefix=prefix + "\t")
-        summary += f"{prefix}Model:\n"
-        summary += self.model.summary(prefix=prefix + "\t")
+        summary += f"{prefix}Actor " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}" + str_with_color("Encoder:", "bold") + "\n"
+        summary += self.encoder.summary(prefix=prefix + "    ")
+        summary += f"{prefix}" + str_with_color("Model:", "bold") + "\n"
+        summary += self.model.summary(prefix=prefix + "    ")
         summary += "\n"
         return summary
     
@@ -427,7 +427,7 @@ class Actor(BaseActor):
                     num_layers=num_layers,
                     multitask_cfg=multitask_cfg,
                 )
-                return moe_layer.Sequential(trunk, nn.ReLU(), heads)
+                return moe_layer.SequentialSum(trunk, nn.ReLU(), heads)
         else:
             trunk = self._make_trunk(
                 input_dim=model_input_dim,

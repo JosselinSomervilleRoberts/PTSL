@@ -3,6 +3,7 @@
 """Reward decoder component for the agent."""
 
 from typing import List
+from toolbox.printing import str_with_color
 
 import torch.nn as nn
 
@@ -23,7 +24,7 @@ class RewardDecoder(base_component.Component):
                 the reward.
         """
         super().__init__()
-        self.trunk = moe_layer.Sequential(
+        self.trunk = moe_layer.SequentialSum(
             nn.Linear(feature_dim, 512),
             nn.LayerNorm(512),
             nn.ReLU(),
@@ -42,9 +43,9 @@ class RewardDecoder(base_component.Component):
         """
         summary: str = ""
         num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        summary += f"{prefix}Reward Decoder ({num_parameters} parameters)\n"
+        summary += f"{prefix}Reward Decoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         summary += f"{prefix}Trunk:\n"
-        summary += self.trunk.summary(prefix=f"{prefix}\t")
+        summary += self.trunk.summary(prefix=f"{prefix}    ")
         return summary
     
     def __repr__(self) -> str:

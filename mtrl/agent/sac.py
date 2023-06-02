@@ -3,6 +3,7 @@
 # Implementation based on Denis Yarats' implementation of [SAC](https://github.com/denisyarats/pytorch_sac).
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
+from toolbox.printing import str_with_color
 
 import hydra
 import numpy as np
@@ -141,16 +142,16 @@ class Agent(AbstractAgent):
         num_parameters = sum(p.numel() for p in self.actor.parameters() if p.requires_grad)
         num_parameters += sum(p.numel() for p in self.critic.parameters() if p.requires_grad)
         num_parameters += sum(p.numel() for p in self.critic_target.parameters() if p.requires_grad)
-        num_parameters += sum(p.numel() for p in self.log_alpha.parameters() if p.requires_grad)
-        summary += f"{prefix}SAC Agent ({num_parameters} parameters)\n"
-        summary += f"\n{prefix}Actor\n"
-        summary += self.actor.summary(prefix=prefix + "\t")
-        summary += f"\n{prefix}Critic\n"
-        summary += self.critic.summary(prefix=prefix + "\t")
-        summary += f"\n{prefix}Critic Target\n"
-        summary += self.critic_target.summary(prefix=prefix + "\t")
-        summary += f"\n{prefix}Log Alpha\n"
-        summary += f"{prefix}\tTensor ({self.log_alpha.shape})\n"
+        num_parameters += self.log_alpha.numel() if self.log_alpha.requires_grad else 0
+        summary += f"{prefix}SAC Agent " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"\n{prefix}" + str_with_color("Actor", ["bold", "blue"]) + "\n"
+        summary += self.actor.summary(prefix=prefix + "    ")
+        summary += f"\n{prefix}" + str_with_color("Critic", ["bold", "blue"]) + "\n"
+        summary += self.critic.summary(prefix=prefix + "    ")
+        summary += f"\n{prefix}" + str_with_color("Critic Target", ["bold", "blue"]) + "\n"
+        summary += self.critic_target.summary(prefix=prefix + "    ")
+        summary += f"\n{prefix}" + str_with_color("Log Alpha", ["bold", "blue"]) + "\n"
+        summary += f"{prefix}    Tensor ({self.log_alpha.shape})\n"
         return summary
     
     def __repr__(self) -> str:

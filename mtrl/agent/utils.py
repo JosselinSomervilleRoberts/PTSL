@@ -186,4 +186,4 @@ def build_mlp(
         output_dim=output_dim,
         num_layers=num_layers,
     )
-    return nn.Sequential(*mods)
+    return moe_layer.SequentialSum(*mods)

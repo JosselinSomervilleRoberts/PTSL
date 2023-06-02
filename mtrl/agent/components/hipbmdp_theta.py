@@ -62,7 +62,7 @@ class ThetaModel(base_component.Component):
             embedding_dim=dim,
             padding_idx=0,
         )
-        self.model = moe_layer.Sequential(
+        self.model = moe_layer.SequentialSum(
             nn.ReLU(),
             nn.Linear(dim, 2 * dim),
             nn.ReLU(),
