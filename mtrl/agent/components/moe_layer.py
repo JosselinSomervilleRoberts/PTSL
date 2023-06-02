@@ -232,7 +232,7 @@ class FeedForwardPAL(nn.Module):
         """
         num_parameters = 0
         num_parameters += PALLayer.compute_number_of_parameters(in_features, hidden_features, pal_features, n_tasks, project_down=True, project_up=True, must_project_up=shared_projection)
-        for _ in range(1, num_layers - 1):
+        for _ in range(num_layers - 1):
             num_parameters += PALLayer.compute_number_of_parameters(hidden_features, hidden_features, pal_features, n_tasks, project_down=not shared_projection, project_up=not shared_projection, must_project_down=shared_projection, must_project_up=shared_projection)
         num_parameters += PALLayer.compute_number_of_parameters(hidden_features, out_features, pal_features, n_tasks, project_down=True, project_up=True, must_project_down=shared_projection)
         return num_parameters
@@ -273,7 +273,7 @@ class FeedForwardPAL(nn.Module):
         
         self._layers: ModuleList[PALLayer] = ModuleList()
         self._layers.append(PALLayer(input_size=in_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=None, project_up_module=self._project_up_module, activation=activation))
-        for _ in range(1, num_layers - 1):
+        for _ in range(num_layers - 1):
             pal_layer = PALLayer(input_size=hidden_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=self._project_up_module, activation=activation)
             self._layers.append(pal_layer)
         self._layers.append(PALLayer(input_size=hidden_features, output_size=out_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=None, activation=nn.Identity()))
