@@ -38,6 +38,9 @@ def start_wandb(config, seed: int = -1):
         "lr/decoder": config.agent.optimizers.decoder.lr,
         "lr/encoder": config.agent.optimizers.encoder.lr,
         "batch_size": config.replay_buffer.batch_size,
+        "pal/dim": config.agent.multitask.pal_cfg.pal_dim,
+        "pal/shared": config.agent.multitask.pal_cfg.shared_projection,
+        "pal/residual": config.agent.multitask.pal_cfg.use_residual_connections,
     }
     wandb.init(project=f"MTRL{config.agent.multitask.num_envs}", name=wandb_name, group=group_wandb, config=config_wandb)
 
