@@ -32,7 +32,18 @@ class PALLayer(nn.Module):
     def get_project_up_module(output_size: int, pal_size: int) -> nn.Linear:
         return nn.Linear(in_features=pal_size, out_features=output_size, bias=False)
 
-    def __init__(self, input_size: int, output_size: int, pal_size: int, n_tasks: int, project_down_module: Optional[nn.Linear] = None, project_up_module: Optional[nn.Linear] = None, activation: nn.Module = nn.ReLU(), debug: bool = False):
+    def __init__(self,
+                 input_size: int,
+                 output_size: int,
+                 pal_size: int,
+                 n_tasks: int,
+                 project_down_module: Optional[nn.Linear] = None,
+                 project_up_module: Optional[nn.Linear] = None,
+                 activation: nn.Module = nn.ReLU(),
+                 residual_mode: str = "none",
+                 residual_project_module: Optional[nn.Linear] = None,
+                 residual_alpha: Optional[nn.Parameter] = None,
+                 debug: bool = False):
         super(PALLayer, self).__init__()
         self.activation = activation
         self.n_tasks = n_tasks
@@ -40,6 +51,8 @@ class PALLayer(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
         self.indices = None
+        self._residual_mode = residual_mode
+        assert self._residual_mode in ["none", "sum", "linear", "project"], f"Invalid residual mode {self._residual_mode}. Modes accepted are: none, sum, linear, project"
         self._debug = debug
 
         # Shared Linear, it is a vanilla Linear layer
@@ -95,6 +108,19 @@ class PALLayer(nn.Module):
         self.individual_linears_weight = nn.Parameter(torch.randn(n_tasks, self._input_pal_size, self._output_pal_size))
         self.individual_linears_bias = nn.Parameter(torch.zeros(n_tasks, self._output_pal_size))
 
+        # Residual
+        self.residual_project_module = None
+        if self._residual_mode == "linear":
+            if residual_alpha is None:
+                self.residual_alpha = nn.Parameter(torch.ones(3) / 3.0)
+            else:
+                self.residual_alpha = residual_alpha
+        elif self._residual_mode == "project" and self._project_down and self._input_pal_size == pal_size:
+            if residual_project_module is None:
+                self.residual_project_module = PALLayer.get_project_down_module(input_size=3*pal_size, pal_size=pal_size)
+            else:
+                self.residual_project_module = residual_project_module
+
     def set_shared_linear(self, weights: torch.Tensor, bias: torch.Tensor) -> None:
         assert weights.shape == (self.output_size, self.input_size), f"Expected shape for shared weight {(self.output_size, self.input_size)}, got {weights.shape}"
         assert bias.shape == (self.output_size,), f"Expected shape for shared bias {(self.output_size,)}, got {bias.shape}"
@@ -114,6 +140,17 @@ class PALLayer(nn.Module):
     def set_project_up(self, weights: torch.Tensor) -> None:
         assert weights.shape == (self.output_size, self._input_pal_size), f"Expected shape for project up {(self.output_size, self.pal_size)}, got {weights.shape}"
         self.project_up_module.weight = nn.Parameter(weights)
+
+    def set_residual_project(self, weights: torch.Tensor) -> None:
+        assert self._residual_mode == "project", f"Residual mode is not project, it is {self._residual_mode}"
+        assert self.residual_project_module is not None, "Residual project module is None"
+        assert weights.shape == (self.pal_size, 3*self.pal_size), f"Expected shape for residual project {(self.pal_size, 3*self.pal_size)}, got {weights.shape}"
+        self.residual_project_module.weight = nn.Parameter(weights)
+
+    def set_residual_alpha(self, alpha: torch.Tensor) -> None:
+        assert self._residual_mode == "linear", f"Residual mode is not linear, it is {self._residual_mode}"
+        assert alpha.shape == (3,), f"Expected shape for residual alpha {(3,)}, got {alpha.shape}"
+        self.alpha = nn.Parameter(alpha)
 
     def set_debug(self, debug: bool) -> None:
         self._debug = debug
@@ -152,6 +189,7 @@ class PALLayer(nn.Module):
         return self.summary()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        assert self._residual_mode == "none", f"Residual mode is not none, it is {self._residual_mode}. You should use residual_forward instead."
         if self.indices is None:
             assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
         else:
@@ -185,10 +223,14 @@ class PALLayer(nn.Module):
         if self._debug: print_debug(y)
         return y
     
-    def residual_forward(self, x: torch.Tensor, residual_x_down: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Similar to forward but add residual_x_down to x_down before computing the individual linears."""
-        assert x.shape == (self.n_tasks, self.input_size), f"Expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
-        assert residual_x_down is None or residual_x_down.shape == (self.n_tasks, self._input_pal_size), f"Expected shape {(self.n_tasks, self._input_pal_size)}, got {residual_x_down.shape}"
+    def residual_forward(self, x: torch.Tensor, residual_x_down: Optional[torch.Tensor] = None, residual_y_down: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Similar to forward but uses the residual_x_down and residual_y_down."""
+        assert residual_x_down is None or residual_x_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_x_down {(x.shape[0], self._input_pal_size)}, got {residual_x_down.shape}"
+        assert residual_y_down is None or residual_y_down.shape == (x.shape[0], self._output_pal_size), f"Expected shape for residual_y_down {(x.shape[0], self._output_pal_size)}, got {residual_y_down.shape}"
+        if self.indices is None:
+            assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
+        else:
+            assert x.shape == (self.indices.shape[0], self.input_size), f"Since indices are specified, expected shape {(self.indices.shape[0], self.input_size)}, got {x.shape}"
         if self._debug: print_debug(x)
 
         # Shared linear
@@ -199,14 +241,26 @@ class PALLayer(nn.Module):
         # 1. Project down
         x_down = self.project_down_module(x)
         if self._debug: print_debug(x_down)
-        if residual_x_down is not None:
-            x_down = x_down + residual_x_down
-            if self._debug: print_debug(x_down)
+
+        # If we use the sum residual node then we simply add x_down, residual_x_down and residual_y_down
+        x_down_with_residual = x_down
+        if residual_x_down is not None and residual_y_down is not None:
+            if self._residual_mode == "sum":
+                x_down_with_residual = x_down + residual_x_down + residual_y_down
+            elif self._residual_mode == "linear":
+                x_down_with_residual = self.residual_alpha[0] * x_down + self.residual_alpha[1] * residual_x_down + self.residual_alpha[2] * residual_y_down
+            elif self._residual_mode == "project":
+                input_projection = torch.cat((x_down, residual_x_down, residual_y_down), dim=1)
+                if self._debug: print_debug(input_projection)
+                x_down_with_residual = self.residual_project_module(input_projection)
+            if self._debug: print_debug(x_down_with_residual)
 
         # 2. Compute X @ Wi for all i efficiently using broadcasting
-        x_down = x_down.unsqueeze(1)
-        y_down = torch.matmul(x_down, self.individual_linears_weight)
-        y_down = y_down.squeeze(1) + self.individual_linears_bias
+        x_down_with_residual = x_down_with_residual.unsqueeze(1)
+        weights = self.individual_linears_weight[self.indices] if self.indices is not None else self.individual_linears_weight
+        bias = self.individual_linears_bias[self.indices] if self.indices is not None else self.individual_linears_bias
+        y_down = torch.matmul(x_down_with_residual, weights)
+        y_down = y_down.squeeze(1) + bias
         if self._debug: print_debug(y_down)
 
         # 3. Project up
@@ -217,7 +271,7 @@ class PALLayer(nn.Module):
         y = y_shared + y_individual
         y = self.activation(y)
         if self._debug: print_debug(y)
-        return y, y_down
+        return y, y_down, x_down
     
     @staticmethod
     def compute_number_of_parameters(input_size: int, output_size: int, pal_size: int, n_tasks: int, project_down: bool, project_up: bool, must_project_down: bool = False, must_project_up: bool = False) -> int:

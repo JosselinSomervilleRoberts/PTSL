@@ -32,6 +32,7 @@ yes y | sudo apt-get install libglew-dev
 yes y | sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3
 
 # Finish mujoco installs
+yes y | pip install gym==0.21.0
 yes y | pip install mujoco-py==2.0.2.13
 yes y | pip install scipy==1.9.1
 yes y | pip install protobuf==3.20.0

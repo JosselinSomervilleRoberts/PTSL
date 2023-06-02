@@ -39,11 +39,59 @@ def test_pal_layer_correctness():
 
     # Computes the output using the PAL Layer
     y_pal = pal_layer(x)
-    y_pal_residual, y_pal_residual_down = pal_layer.residual_forward(x)
+    y_pal_residual, y_pal_residual_down, x_pal_residual_down = pal_layer.residual_forward(x)
 
     # Checks that the outputs are the same
     assert y.shape == y_pal.shape, f"Expected shape {y.shape}, got {y_pal.shape}"
     assert torch.allclose(y, y_pal), f"Expected {y},\ngot {y_pal}"
+    assert torch.allclose(x_down, x_pal_residual_down), f"Expected {x_down},\ngot {x_pal_residual_down}"
+    assert torch.allclose(y_down, y_pal_residual_down), f"Expected {y_down},\ngot {y_pal_residual_down}"
+    assert torch.allclose(y, y_pal_residual), f"Expected {y},\ngot {y_pal_residual}"
+
+
+def test_pal_layer_correctness_large_batch():
+    """Test a PAL Layer to make sure ut works as expected when batch_size > n_tasks."""
+    in_dim, out_dim, pal_dim, n_tasks = 3, 4, 2, 5
+
+    # Creates individually all the components of the PAL Layer
+    shared_linear = nn.Linear(in_dim, out_dim)
+    individual_linears: ModuleList[nn.Linear] = ModuleList()
+    for _ in range(n_tasks):
+        individual_linears.append(nn.Linear(pal_dim, pal_dim))
+    project_down = nn.Linear(in_dim, pal_dim, bias=False)
+    project_up = nn.Linear(pal_dim, out_dim, bias=False)
+
+    # Creates the PAL Layer
+    pal_layer = PALLayer(in_dim, out_dim, pal_dim, n_tasks, project_down, project_up)
+
+    # Assigns the weights (making separate copies)
+    pal_layer.set_shared_linear(shared_linear.weight.detach().clone(), shared_linear.bias.detach().clone())
+    for i in range(n_tasks):
+        pal_layer.set_individual_linear(i, individual_linears[i].weight.detach().clone().T, individual_linears[i].bias.detach().clone())
+    pal_layer.set_project_down(project_down.weight.detach().clone())
+    pal_layer.set_project_up(project_up.weight.detach().clone())
+
+    # Manually computes the output
+    x = torch.randn(3 * n_tasks, in_dim)
+    indices = torch.randint(0, n_tasks, (3 * n_tasks,))
+    y_shared = shared_linear(x)
+    x_down = project_down(x)
+    y_down = torch.zeros(3 * n_tasks, pal_dim)
+    for i in range(3 * n_tasks):
+        y_down[i] = individual_linears[indices[i]](x_down[i])
+    y_individual = project_up(y_down)
+    y = y_shared + y_individual
+    y = nn.ReLU()(y)
+
+    # Computes the output using the PAL Layer
+    pal_layer.set_indices(indices)
+    y_pal = pal_layer(x)
+    y_pal_residual, y_pal_residual_down, x_pal_residual_down = pal_layer.residual_forward(x)
+
+    # Checks that the outputs are the same
+    assert y.shape == y_pal.shape, f"Expected shape {y.shape}, got {y_pal.shape}"
+    assert torch.allclose(y, y_pal), f"Expected {y},\ngot {y_pal}"
+    assert torch.allclose(x_down, x_pal_residual_down), f"Expected {x_down},\ngot {x_pal_residual_down}"
     assert torch.allclose(y_down, y_pal_residual_down), f"Expected {y_down},\ngot {y_pal_residual_down}"
     assert torch.allclose(y, y_pal_residual), f"Expected {y},\ngot {y_pal_residual}"
 
@@ -62,6 +110,7 @@ def test_pal_layer_skip_project_down():
     y = pal_layer(x)
     assert y.shape == (n_tasks, out_dim)
 
+
 def test_pal_layer_skip_project_up():
     in_dim, out_dim, pal_dim, n_tasks = 3, 1, 10, 5
 
@@ -75,6 +124,147 @@ def test_pal_layer_skip_project_up():
     x = torch.randn(n_tasks, in_dim)
     y = pal_layer(x)
     assert y.shape == (n_tasks, out_dim)
+
+
+def test_pal_layer_residual_sum():
+    in_dim, out_dim, pal_dim, n_tasks = 3, 4, 2, 5
+
+    # Creates individually all the components of the PAL Layer
+    shared_linear = nn.Linear(in_dim, out_dim)
+    individual_linears: ModuleList[nn.Linear] = ModuleList()
+    for _ in range(n_tasks):
+        individual_linears.append(nn.Linear(pal_dim, pal_dim))
+    project_down = nn.Linear(in_dim, pal_dim, bias=False)
+    project_up = nn.Linear(pal_dim, out_dim, bias=False)
+
+    # Creates the PAL Layer
+    pal_layer = PALLayer(in_dim, out_dim, pal_dim, n_tasks, project_down, project_up, residual_mode="sum")
+
+    # Assigns the weights (making separate copies)
+    pal_layer.set_shared_linear(shared_linear.weight.detach().clone(), shared_linear.bias.detach().clone())
+    for i in range(n_tasks):
+        pal_layer.set_individual_linear(i, individual_linears[i].weight.detach().clone().T, individual_linears[i].bias.detach().clone())
+    pal_layer.set_project_down(project_down.weight.detach().clone())
+    pal_layer.set_project_up(project_up.weight.detach().clone())
+
+    # Manually computes the output
+    x = torch.randn(n_tasks, in_dim)
+    residual_x_down = torch.randn(n_tasks, pal_dim)
+    residual_y_down = torch.randn(n_tasks, pal_dim)
+
+    y_shared = shared_linear(x)
+    x_down = project_down(x)
+    x_down_residual = x_down + residual_x_down + residual_y_down
+    y_down = torch.zeros(n_tasks, pal_dim)
+    for i in range(n_tasks):
+        y_down[i] = individual_linears[i](x_down_residual[i])
+    y_individual = project_up(y_down)
+    y = y_shared + y_individual
+    y = nn.ReLU()(y)
+
+    # Computes the output using the PAL Layer
+    y_pal, y_pal_residual_down, x_pal_residual_down = pal_layer.residual_forward(x, residual_x_down, residual_y_down)
+
+    # Checks that the outputs are the same
+    assert y.shape == y_pal.shape, f"Expected shape {y.shape}, got {y_pal.shape}"
+    assert torch.allclose(x_down, x_pal_residual_down), f"Expected {x_down},\ngot {x_pal_residual_down}"
+    assert torch.allclose(y_down, y_pal_residual_down), f"Expected {y_down},\ngot {y_pal_residual_down}"
+    assert torch.allclose(y, y_pal), f"Expected {y},\ngot {y_pal}"
+
+
+def test_pal_layer_residual_linear():
+    in_dim, out_dim, pal_dim, n_tasks = 3, 4, 2, 5
+
+    # Creates individually all the components of the PAL Layer
+    shared_linear = nn.Linear(in_dim, out_dim)
+    individual_linears: ModuleList[nn.Linear] = ModuleList()
+    for _ in range(n_tasks):
+        individual_linears.append(nn.Linear(pal_dim, pal_dim))
+    project_down = nn.Linear(in_dim, pal_dim, bias=False)
+    project_up = nn.Linear(pal_dim, out_dim, bias=False)
+    residual_alpha = nn.Parameter(torch.randn(3))
+
+    # Creates the PAL Layer
+    pal_layer = PALLayer(in_dim, out_dim, pal_dim, n_tasks, project_down, project_up, residual_mode="linear", residual_alpha=residual_alpha)
+
+    # Assigns the weights (making separate copies)
+    pal_layer.set_shared_linear(shared_linear.weight.detach().clone(), shared_linear.bias.detach().clone())
+    for i in range(n_tasks):
+        pal_layer.set_individual_linear(i, individual_linears[i].weight.detach().clone().T, individual_linears[i].bias.detach().clone())
+    pal_layer.set_project_down(project_down.weight.detach().clone())
+    pal_layer.set_project_up(project_up.weight.detach().clone())
+
+    # Manually computes the output
+    x = torch.randn(n_tasks, in_dim)
+    residual_x_down = torch.randn(n_tasks, pal_dim)
+    residual_y_down = torch.randn(n_tasks, pal_dim)
+
+    y_shared = shared_linear(x)
+    x_down = project_down(x)
+    x_down_residual = residual_alpha[0] * x_down + residual_alpha[1] * residual_x_down + residual_alpha[2] * residual_y_down
+    y_down = torch.zeros(n_tasks, pal_dim)
+    for i in range(n_tasks):
+        y_down[i] = individual_linears[i](x_down_residual[i])
+    y_individual = project_up(y_down)
+    y = y_shared + y_individual
+    y = nn.ReLU()(y)
+
+    # Computes the output using the PAL Layer
+    y_pal, y_pal_residual_down, x_pal_residual_down = pal_layer.residual_forward(x, residual_x_down, residual_y_down)
+
+    # Checks that the outputs are the same
+    assert y.shape == y_pal.shape, f"Expected shape {y.shape}, got {y_pal.shape}"
+    assert torch.allclose(x_down, x_pal_residual_down), f"Expected {x_down},\ngot {x_pal_residual_down}"
+    assert torch.allclose(y_down, y_pal_residual_down), f"Expected {y_down},\ngot {y_pal_residual_down}"
+    assert torch.allclose(y, y_pal), f"Expected {y},\ngot {y_pal}"
+
+
+def test_pal_layer_residual_project():
+    in_dim, out_dim, pal_dim, n_tasks = 3, 4, 2, 5
+
+    # Creates individually all the components of the PAL Layer
+    shared_linear = nn.Linear(in_dim, out_dim)
+    individual_linears: ModuleList[nn.Linear] = ModuleList()
+    for _ in range(n_tasks):
+        individual_linears.append(nn.Linear(pal_dim, pal_dim))
+    project_down = nn.Linear(in_dim, pal_dim, bias=False)
+    project_up = nn.Linear(pal_dim, out_dim, bias=False)
+    residual_project = nn.Linear(3 * pal_dim, pal_dim, bias=False)
+
+    # Creates the PAL Layer
+    pal_layer = PALLayer(in_dim, out_dim, pal_dim, n_tasks, project_down, project_up, residual_mode="project", residual_project_module=residual_project)
+
+    # Assigns the weights (making separate copies)
+    pal_layer.set_shared_linear(shared_linear.weight.detach().clone(), shared_linear.bias.detach().clone())
+    for i in range(n_tasks):
+        pal_layer.set_individual_linear(i, individual_linears[i].weight.detach().clone().T, individual_linears[i].bias.detach().clone())
+    pal_layer.set_project_down(project_down.weight.detach().clone())
+    pal_layer.set_project_up(project_up.weight.detach().clone())
+
+    # Manually computes the output
+    x = torch.randn(n_tasks, in_dim)
+    residual_x_down = torch.randn(n_tasks, pal_dim)
+    residual_y_down = torch.randn(n_tasks, pal_dim)
+
+    y_shared = shared_linear(x)
+    x_down = project_down(x)
+    x_down_residual = residual_project(torch.cat([x_down, residual_x_down, residual_y_down], dim=-1))
+    y_down = torch.zeros(n_tasks, pal_dim)
+    for i in range(n_tasks):
+        y_down[i] = individual_linears[i](x_down_residual[i])
+    y_individual = project_up(y_down)
+    y = y_shared + y_individual
+    y = nn.ReLU()(y)
+
+    # Computes the output using the PAL Layer
+    y_pal, y_pal_residual_down, x_pal_residual_down = pal_layer.residual_forward(x, residual_x_down, residual_y_down)
+
+    # Checks that the outputs are the same
+    assert y.shape == y_pal.shape, f"Expected shape {y.shape}, got {y_pal.shape}"
+    assert torch.allclose(x_down, x_pal_residual_down), f"Expected {x_down},\ngot {x_pal_residual_down}"
+    assert torch.allclose(y_down, y_pal_residual_down), f"Expected {y_down},\ngot {y_pal_residual_down}"
+    assert torch.allclose(y, y_pal), f"Expected {y},\ngot {y_pal}"
+
 
 def test_pal_layer_number_of_parameters():
     N_TESTS = 1000

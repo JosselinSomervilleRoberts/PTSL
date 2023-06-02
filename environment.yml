@@ -57,7 +57,6 @@ dependencies:
     - google-auth-oauthlib==0.4.6
     - gpustat==1.1
     - grpcio==1.54.2
-    - gym==0.21.0
     - hiplot==0.1.22
     - hydra-core==1.0.5
     - hydra-submitit-launcher==1.0.1
@@ -160,3 +159,4 @@ dependencies:
     - werkzeug==2.3.4
     - widgetsnbextension==4.0.7
     - yamllint==1.25.0
+    - gym==0.26.0
