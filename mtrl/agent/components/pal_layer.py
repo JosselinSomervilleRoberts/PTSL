@@ -42,7 +42,7 @@ class PALLayer(nn.Module):
                  activation: nn.Module = nn.ReLU(),
                  residual_mode: str = "none",
                  residual_project_module: Optional[nn.Linear] = None,
-                 residual_alpha: Optional[torch.Parameter] = None,
+                 residual_alpha: Optional[nn.Parameter] = None,
                  debug: bool = False):
         super(PALLayer, self).__init__()
         self.activation = activation
@@ -225,8 +225,12 @@ class PALLayer(nn.Module):
     
     def residual_forward(self, x: torch.Tensor, residual_x_down: Optional[torch.Tensor] = None, residual_y_down: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Similar to forward but uses the residual_x_down and residual_y_down."""
-        assert x.shape == (self.n_tasks, self.input_size), f"Expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
-        assert residual_x_down is None or residual_x_down.shape == (self.n_tasks, self._input_pal_size), f"Expected shape {(self.n_tasks, self._input_pal_size)}, got {residual_x_down.shape}"
+        assert residual_x_down is None or residual_x_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_x_down {(x.shape[0], self._input_pal_size)}, got {residual_x_down.shape}"
+        assert residual_y_down is None or residual_y_down.shape == (x.shape[0], self._output_pal_size), f"Expected shape for residual_y_down {(x.shape[0], self._output_pal_size)}, got {residual_y_down.shape}"
+        if self.indices is None:
+            assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
+        else:
+            assert x.shape == (self.indices.shape[0], self.input_size), f"Since indices are specified, expected shape {(self.indices.shape[0], self.input_size)}, got {x.shape}"
         if self._debug: print_debug(x)
 
         # Shared linear
@@ -253,8 +257,10 @@ class PALLayer(nn.Module):
 
         # 2. Compute X @ Wi for all i efficiently using broadcasting
         x_down_with_residual = x_down_with_residual.unsqueeze(1)
-        y_down = torch.matmul(x_down_with_residual, self.individual_linears_weight)
-        y_down = y_down.squeeze(1) + self.individual_linears_bias
+        weights = self.individual_linears_weight[self.indices] if self.indices is not None else self.individual_linears_weight
+        bias = self.individual_linears_bias[self.indices] if self.indices is not None else self.individual_linears_bias
+        y_down = torch.matmul(x_down_with_residual, weights)
+        y_down = y_down.squeeze(1) + bias
         if self._debug: print_debug(y_down)
 
         # 3. Project up
