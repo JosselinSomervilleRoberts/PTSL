@@ -65,10 +65,14 @@ def preprocess_obs(obs: TensorType, bits=5) -> TensorType:
 
 
 def weight_init_linear(m: ModelType):
-    assert isinstance(m.weight, TensorType)
-    nn.init.xavier_uniform_(m.weight)
-    assert isinstance(m.bias, TensorType)
-    nn.init.zeros_(m.bias)
+    # Check if bias exists
+    if hasattr(m.bias, "data"):
+        assert isinstance(m.weight, TensorType)
+        nn.init.xavier_uniform_(m.weight)
+        assert isinstance(m.bias, TensorType)
+        nn.init.zeros_(m.bias)
+    else:
+        nn.init.zeros_(m.weight)
 
 
 def weight_init_conv(m: ModelType):
@@ -182,4 +186,4 @@ def build_mlp(
         output_dim=output_dim,
         num_layers=num_layers,
     )
-    return nn.Sequential(*mods)
+    return moe_layer.SequentialSum(*mods)

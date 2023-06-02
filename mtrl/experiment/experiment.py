@@ -5,6 +5,7 @@ import json
 import os
 from copy import deepcopy
 from typing import Any, List, Optional, Tuple
+from toolbox.printing import print_visible, str_with_color
 
 import hydra
 import torch
@@ -71,6 +72,7 @@ class Experiment(checkpointable.Checkpointable):
             ],
             device=self.device,
         )
+        print_visible(self.agent.summary())
 
         self.video_dir = utils.make_dir(
             os.path.join(self.config.setup.save_dir, "video")

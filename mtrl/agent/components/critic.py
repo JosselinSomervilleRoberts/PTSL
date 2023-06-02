@@ -3,6 +3,7 @@
 """Critic component for the agent."""
 
 from typing import List, Tuple
+from toolbox.printing import str_with_color
 
 import torch
 from torch import nn
@@ -13,6 +14,7 @@ from mtrl.agent.components import encoder, moe_layer
 from mtrl.agent.components.actor import (
     check_if_should_use_multi_head_policy,
     check_if_should_use_task_encoder,
+    check_if_should_use_pal,
 )
 from mtrl.agent.components.soft_modularization import SoftModularizedMLP
 from mtrl.agent.ds.mt_obs import MTObs
@@ -54,6 +56,12 @@ class QFunction(base_component.Component):
         self.should_use_multi_head_policy = check_if_should_use_multi_head_policy(
             multitask_cfg=multitask_cfg
         )
+        self.should_use_pal = check_if_should_use_pal(
+            multitask_cfg=multitask_cfg
+        )
+        assert not (
+            self.should_use_multi_head_policy and self.should_use_pal
+        ), "Cannot have both multi-head policy and PAL"
 
         self.model = self.build_model(
             obs_dim=obs_dim,
@@ -68,6 +76,26 @@ class QFunction(base_component.Component):
             self.obs_action_projection_layer = nn.Linear(
                 in_features=obs_dim + action_dim, out_features=obs_dim
             )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the actor.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the actor.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Qfunction " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += self.model.summary(prefix=prefix + "    ")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def _make_head(
         self,
@@ -94,6 +122,27 @@ class QFunction(base_component.Component):
             num_layers=num_layers,
             bias=True,
         )
+    
+    def _make_pal(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        pal_dim: int,
+        num_layers: int,
+        shared_projection: bool,
+        use_residual_connections: bool,
+        multitask_cfg: ConfigType,
+    ):
+        return moe_layer.FeedForwardPAL(
+            n_tasks=multitask_cfg.num_envs,
+            in_features=input_dim,
+            out_features=1,
+            num_layers=num_layers,
+            hidden_features=hidden_dim,
+            pal_features=pal_dim,
+            shared_projection=shared_projection,
+            use_residual_connections=use_residual_connections,
+        )   
 
     def _make_trunk(
         self,
@@ -168,6 +217,17 @@ class QFunction(base_component.Component):
         Returns:
             ModelType:
         """
+        if self.should_use_pal:
+            model = self._make_pal(
+                input_dim=obs_dim + action_dim,
+                hidden_dim=hidden_dim,
+                pal_dim=multitask_cfg.pal_cfg.pal_dim,
+                num_layers=num_layers,
+                shared_projection=multitask_cfg.pal_cfg.shared_projection,
+                use_residual_connections=multitask_cfg.pal_cfg.use_residual_connections,
+                multitask_cfg=multitask_cfg,
+            )
+            return model
         if self.should_use_multi_head_policy:
             if multitask_cfg.should_use_disjoint_policy:
                 heads = self._make_head(
@@ -192,7 +252,7 @@ class QFunction(base_component.Component):
                     num_layers=num_layers,
                     multitask_cfg=multitask_cfg,
                 )
-                return nn.Sequential(trunk, nn.ReLU(), heads)
+                return moe_layer.SequentialSum(trunk, nn.ReLU(), heads)
         else:
             trunk = self._make_trunk(
                 obs_dim=obs_dim,
@@ -213,6 +273,9 @@ class QFunction(base_component.Component):
             return [self.model[-1]]  # type: ignore[index]
 
     def forward(self, mtobs: MTObs) -> TensorType:
+        task_info = mtobs.task_info
+        if self.should_use_pal:
+            self.model.set_indices(task_info.env_index)
         obs_action = mtobs.env_obs
         if self.should_condition_model_on_task_info:
             obs_action = self.obs_action_projection_layer(obs_action)
@@ -281,6 +344,12 @@ class Critic(base_component.Component):
         self.should_use_multi_head_policy = check_if_should_use_multi_head_policy(
             multitask_cfg=multitask_cfg
         )
+        self.should_use_pal = check_if_should_use_pal(
+            multitask_cfg=multitask_cfg
+        )
+        assert not (
+            self.should_use_multi_head_policy and self.should_use_pal
+        ), "Cannot have both multi-head policy and PAL"
 
         if self.should_use_multi_head_policy:
             task_index_to_mask = torch.eye(multitask_cfg.num_envs)
@@ -306,6 +375,31 @@ class Critic(base_component.Component):
         )
 
         self.apply(agent_utils.weight_init)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the actor.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the actor.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Critic " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}" + str_with_color("Encoder:", "bold") + "\n"
+        summary += self.encoder.summary(prefix=prefix + "    ")
+        summary += f"{prefix}" + str_with_color("Q1:", "bold") + "\n"
+        summary += self.Q1.summary(prefix=prefix + "    ")
+        summary += f"{prefix}" + str_with_color("Q2:", "bold") + "\n"
+        summary += self.Q2.summary(prefix=prefix + "    ")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def _make_encoder(
         self,

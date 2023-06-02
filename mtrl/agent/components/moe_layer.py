@@ -14,7 +14,73 @@ from torch import nn
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.ds.task_info import TaskInfo
 from mtrl.utils.types import ConfigType, TensorType
+from mtrl.agent.components.pal_layer import PALLayer
+from toolbox.printing import debug as print_debug
+from toolbox.printing import str_with_color
 
+
+
+class SequentialSum(nn.Sequential):
+    """Functions exactly as torch.nn.Sequential, but has a summary method."""
+
+    def __init__(self, *args: nn.Module) -> None:
+        super().__init__(*args)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the Sequential.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the Sequential.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Sequential " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        for i, layer in enumerate(self):
+            # If the layer has a summary method, use it.
+            if hasattr(layer, "summary"):
+                summary += f"{prefix}    Layer {i}:\n"
+                summary += layer.summary(prefix=prefix + "        ")
+            else:
+                summary += f"{prefix}    Layer {i}: {layer}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
+class ModuleList(nn.ModuleList):
+    """Functions exactly as torch.nn.ModuleList, but has a summary method."""
+
+    def __init__(self, *args: nn.Module) -> None:
+        super().__init__(*args)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the ModuleList.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the ModuleList.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}ModuleList " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        for i, layer in enumerate(self):
+            # If the layer has a summary method, use it.
+            if hasattr(layer, "summary"):
+                summary += f"{prefix}    Layer {i}:\n"
+                summary += layer.summary(prefix=prefix + "        ")
+            else:
+                summary += f"{prefix}    Layer {i}: {layer}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
 class Linear(nn.Module):
     def __init__(
@@ -41,6 +107,30 @@ class Linear(nn.Module):
             self.use_bias = True
         else:
             self.use_bias = False
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the Linear.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the Linear.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Linear " + str_with_color(f"({num_parameters} parameters)", "purple")
+        summary += f"  Weight: Tensor ({self.num_experts}, {self.in_features}, {self.out_features})"
+        if self.use_bias:
+            summary += f"  Bias: Tensor ({self.num_experts}, 1, {self.out_features})"
+        else:
+            summary += f"  Bias: None"
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
         if self.use_bias:
@@ -75,7 +165,7 @@ class FeedForward(nn.Module):
                 not learn an additive bias. Defaults to True.
         """
         super().__init__()
-        layers: List[nn.Module] = []
+        self._layers: List[nn.Module] = []
         current_in_features = in_features
         for _ in range(num_layers - 1):
             linear = Linear(
@@ -84,8 +174,8 @@ class FeedForward(nn.Module):
                 out_features=hidden_features,
                 bias=bias,
             )
-            layers.append(linear)
-            layers.append(nn.ReLU())
+            self._layers.append(linear)
+            self._layers.append(nn.ReLU())
             current_in_features = hidden_features
         linear = Linear(
             num_experts=num_experts,
@@ -93,8 +183,30 @@ class FeedForward(nn.Module):
             out_features=out_features,
             bias=bias,
         )
-        layers.append(linear)
-        self._model = nn.Sequential(*layers)
+        self._layers.append(linear)
+        self._model = SequentialSum(*self._layers)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the FeedForward.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the FeedForward.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}FeedForward " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}" + str_with_color("Layers:", "bold") + "\n"
+        for i, layer in enumerate(self._layers):
+            summary += f"{prefix}    " + str_with_color(f"Layer {i}:", "bold") + f" {layer}"
+            if not hasattr(layer, "summary"): summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
         return self._model(x)
@@ -104,192 +216,126 @@ class FeedForward(nn.Module):
     
 
 class FeedForwardPAL(nn.Module):
-    def __init__(
-        self,
-        num_experts: int,
+
+    @staticmethod
+    def compute_number_of_parameters(
+        n_tasks: int,
         in_features: int,
         out_features: int,
         num_layers: int,
         hidden_features: int,
         pal_features: int,
         shared_projection: bool = True,
-        use_pal_layer_on_input: bool = False,
-        use_pal_layer_on_output: bool = False,
-        bias: bool = True,
+    ) -> int:
+        """
+        Computes the number of parameters of a FeedForwardPAL model without actually creating it.
+        """
+        num_parameters = 0
+        num_parameters += PALLayer.compute_number_of_parameters(in_features, hidden_features, pal_features, n_tasks, project_down=True, project_up=True, must_project_up=shared_projection)
+        for _ in range(1, num_layers - 1):
+            num_parameters += PALLayer.compute_number_of_parameters(hidden_features, hidden_features, pal_features, n_tasks, project_down=not shared_projection, project_up=not shared_projection, must_project_down=shared_projection, must_project_up=shared_projection)
+        num_parameters += PALLayer.compute_number_of_parameters(hidden_features, out_features, pal_features, n_tasks, project_down=True, project_up=True, must_project_down=shared_projection)
+        return num_parameters
+
+    def __init__(
+        self,
+        n_tasks: int,
+        in_features: int,
+        out_features: int,
+        num_layers: int,
+        hidden_features: int,
+        pal_features: int,
+        shared_projection: bool = True,
+        activation: nn.Module = nn.ReLU(),
+        residual_mode: str = "none",
+        debug: bool = False,
     ):
-        """A feedforward model of mixture of experts layers and projected attention layers.
+        """
+        A feedforward model of mixture of experts layers and projected attention layers.
         For a given input, the output will go throught several linear layers (shared for each
         tasks, i.e. simple MDP). However, at each step, the feature will be projected down to
         a lower dimension (pal_features), go through a linear layer to produce pal_features
-        features, and then projected back to the original dimension. THe result is then added
+        features, and then projected back to the original dimension. The result is then added
         to the original output of the linear layer. This is repeated for each layer (the projection
         matrices can be shared or not).
         This is a variant of the PAL model from https://arxiv.org/pdf/1902.02671.pdf
-
-        Args:
-            num_experts (int): number of experts in the mixture.
-            in_features (int): size of each input sample for one expert.
-            out_features (int): size of each output sample for one expert.
-            num_layers (int): number of layers in the feedforward network.
-            hidden_features (int): dimensionality of hidden layer in the
-                feedforward network.
-            pal_features (int): dimensionality of the projected attention layer.
-            shared_projection (bool): whether to share the projection matrices
-            bias (bool, optional): if set to ``False``, the layer will
-                not learn an additive bias. Defaults to True.
         """
         super().__init__()
+        self._n_tasks = n_tasks
         self._shared_projection = shared_projection
-        self._use_pal_layer_on_input = use_pal_layer_on_input
-        self._use_pal_layer_on_output = use_pal_layer_on_output
+        self._residual_mode = residual_mode
+        self._debug = debug
 
-        # First build the shared linear layers
-        # This is simply a regular feedforward network
-        shared_layers: List[nn.Module] = []
-        current_in_features = in_features
-        for _ in range(num_layers - 1):
-            linear = nn.Linear(
-                in_features=current_in_features,
-                out_features=hidden_features,
-                bias=bias,
-            )
-            shared_layers.append(linear)
-            current_in_features = hidden_features
-        linear = nn.Linear(
-            in_features=current_in_features,
-            out_features=out_features,
-            bias=bias,
-        )
-        shared_layers.append(linear)
-
-        # Build the Projection Matrices
-        # If the matrices are shared, we only need one up and one down projection
-        # Otherwise, we need one up and one down projection for each intermediate layer
-        if shared_projection:
-            down_projection = nn.Linear(
-                in_features=hidden_features,
-                out_features=pal_features,
-                bias=bias,
-            )
-            up_projection = nn.Linear(
-                in_features=pal_features,
-                out_features=hidden_features,
-                bias=bias,
-            )
-            self.up_projections = nn.ModuleList([up_projection])
-            self.down_projections = nn.ModuleList([down_projection])
-        else:
-            up_projections: List[nn.Module] = []
-            down_projections: List[nn.Module] = []
-            if use_pal_layer_on_input:
-                down_projection = nn.Linear(
-                    in_features=in_features,
-                    out_features=pal_features,
-                    bias=bias,
-                )
-                up_projection = nn.Linear(
-                    in_features=pal_features,
-                    out_features=hidden_features,
-                    bias=bias,
-                )
-                up_projections.append(up_projection)
-                down_projections.append(down_projection)
-            for _ in range(num_layers - 2):
-                down_projection = nn.Linear(
-                    in_features=hidden_features,
-                    out_features=pal_features,
-                    bias=bias,
-                )
-                up_projection = nn.Linear(
-                    in_features=pal_features,
-                    out_features=hidden_features,
-                    bias=bias,
-                )
-                up_projections.append(up_projection)
-                down_projections.append(down_projection)
-            if use_pal_layer_on_output:
-                down_projection = nn.Linear(
-                    in_features=hidden_features,
-                    out_features=pal_features,
-                    bias=bias,
-                )
-                up_projection = nn.Linear(
-                    in_features=pal_features,
-                    out_features=out_features,
-                    bias=bias,
-                )
-                up_projections.append(up_projection)
-                down_projections.append(down_projection)
-            self.up_projections = nn.ModuleList(up_projections)
-            self.down_projections = nn.ModuleList(down_projections)
-
-        # Build the PAL layers
-        # There are num_layers - 2 + use_pal_layer_on_input + use_pal_layer_on_output PAL layers
-        # Each PAL layer is a Linear layer with pal_features input and output and num_experts
-
-        pal_layers: List[nn.Module] = []
-        current_in_features = pal_features
-        for _ in range(num_layers - 2 + use_pal_layer_on_input + use_pal_layer_on_output):
-            linear = Linear(
-                num_experts=num_experts,
-                in_features=pal_features,
-                out_features=pal_features,
-                bias=bias,
-            )
-            pal_layers.append(linear)
-
-    def _get_idx_projection_matrix(self, idx_layer: int):
-        """Get the projection matrix index for the idx_layer layer."""
+        self._project_up_module, self._project_down_module, self._residual_project, self._residual_alpha = None, None, None, None
         if self._shared_projection:
-            return 0
-        elif idx_layer < 0:
-            if self._use_pal_layer_on_output:
-                return idx_layer
-            else:
-                return idx_layer - 1
-        else:
-            if self._use_pal_layer_on_input:
-                return idx_layer
-            else:
-                return idx_layer - 1
+            self._project_up_module = PALLayer.get_project_up_module(output_size=hidden_features, pal_size=pal_features)
+            self._project_down_module = PALLayer.get_project_down_module(input_size=hidden_features, pal_size=pal_features)
+        if self._residual_mode == "linear":
+            self._residual_alpha = nn.Parameter(torch.ones(3) / 3.0)
+        elif self._residual_mode == "project":
+            self._residual_project_module = PALLayer.get_project_down_module(input_size=3*pal_features, pal_size=pal_features)
+        
+        
+        self._layers: ModuleList[PALLayer] = ModuleList()
+        self._layers.append(PALLayer(input_size=in_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=None, project_up_module=self._project_up_module, activation=activation, residual_mode="none"))
+        for _ in range(1, num_layers - 1):
+            pal_layer = PALLayer(input_size=hidden_features, output_size=hidden_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=self._project_up_module, activation=activation, residual_mode=self._residual_mode, residual_project_module=self._residual_project_module, residual_alpha=self._residual_alpha)
+            self._layers.append(pal_layer)
+        self._layers.append(PALLayer(input_size=hidden_features, output_size=out_features, pal_size=pal_features, n_tasks=n_tasks, project_down_module=self._project_down_module, project_up_module=None, activation=nn.Identity(), residual_mode=self._residual_mode, residual_project_module=self._residual_project_module, residual_alpha=self._residual_alpha))
 
-    def _get_project_down_matrix(self, idx_layer: int):
-        """Get the projection matrix for the idx_layer layer."""
-        return self.down_projections[self._get_idx_projection_matrix(idx_layer)]
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the FeedForward PAL.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the FeedForward PAL.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}FeedForwardPAL " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}Shared projection: {self._shared_projection}\n"
+        summary += f"{prefix}Residual mode: {self._residual_mode}\n"
+        if self._residual_mode == "linear":
+            summary += f"{prefix}    Residual alpha: {self._residual_alpha}\n"
+        elif self._residual_mode == "project":
+            summary += f"{prefix}    Residual project module: {self._residual_project_module}\n"
+        summary += f"{prefix}" + str_with_color("Layers:", "bold") + "\n"
+        for i, layer in enumerate(self._layers):
+            summary += f"{prefix}    " + str_with_color(f"Layer {i}:", "bold") + "\n"
+            summary += layer.summary(prefix=prefix + "    ")
+        return summary
     
-    def _get_project_up_matrix(self, idx_layer: int):
-        """Get the projection matrix for the idx_layer layer."""
-        return self.up_projections[self._get_idx_projection_matrix(idx_layer)]
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, x: TensorType) -> TensorType:
-        # Apply the first layer
-        x_shared = self.shared_layers[0](x)
-        if self._use_pal_layer_on_input:
-            x_pal = self._get_project_down_matrix(0)(x)
-            x_pal = self.pal_layers[0](x_pal)
-            x_pal = self._get_project_up_matrix(0)(x_pal)
-            x_shared = x_shared + x_pal
-        x = nn.ReLU()(x_shared)
+        # Here we simply apply the PAL layers one after the other
+        # The only twist it if we use_residual_connections, in which case
+        # we add the downsampled output to the downsampled input of the next layer.
 
-        # Apply the intermediate layers
-        for idx_layer in range(1, len(self.shared_layers) - 1):
-            x_shared = self.shared_layers[idx_layer](x)
-            x_pal = self._get_project_down_matrix(idx_layer)(x)
-            x_pal = self.pal_layers[idx_layer](x_pal)
-            x_pal = self._get_project_up_matrix(idx_layer)(x_pal)
-            x_shared = x_shared + x_pal
-            x = nn.ReLU()(x_shared)
+        if self._residual_mode == "none":
+            for layer in self._layers:
+                x = layer(x)
+                if self._debug: print_debug(x)
+            return x
+        
+        # If we use residual connections, we need to keep track of the downsampled
+        # outputs
+        x_down, y_down = None, None
+        for layer in self._layers:
+            x, y_down, x_down = layer.residual_forward(x, x_down, y_down)
+            if self._debug:
+                print_debug(x)
+                print_debug(x_down)
+                print_debug(y_down)
+        return x
 
-        # Apply the last layer
-        x_shared = self.shared_layers[-1](x)
-        if self._use_pal_layer_on_output:
-            x_pal = self._get_project_down_matrix(-1)(x)
-            x_pal = self.pal_layers[-1](x_pal)
-            x_pal = self._get_project_up_matrix(-1)(x_pal)
-            x_shared = x_shared + x_pal
-
-        return x_shared
-
+    def set_indices(self, indices: torch.Tensor) -> None:
+        for layer in self._layers:
+            layer.set_indices(indices)
 
 
 class MaskCache:
@@ -333,6 +379,23 @@ class MaskCache:
         self.keys_to_cache = {key for key in keys_to_cache if key != batch_size}
         # This is a hack to get some speed up, by reusing the mask
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the MaskCache.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the MaskCache.
+        """
+        summary: str = ""
+        summary = f"{prefix}Mask cache\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
     def get_mask(self, task_info: TaskInfo) -> TensorType:
         """Get the mask corresponding to a given task info.
 
@@ -370,6 +433,23 @@ class MixtureOfExperts(nn.Module):
         super().__init__()
         self.multitask_cfg = multitask_cfg
         self.mask_cache: MaskCache
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the MixtureOfExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the MixtureOfExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}Mixture of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, task_info: TaskInfo) -> TensorType:
         return self.mask_cache.get_mask(task_info=task_info)
@@ -414,6 +494,27 @@ class AttentionBasedExperts(MixtureOfExperts):
         self.trunk.apply(agent_utils.weight_init)
         self.topk = topk
         self._softmax = torch.nn.Softmax(dim=1)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the AttentionBasedExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the AttentionBasedExperts.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}AttentionBasedExperts " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}Trunk:\n"
+        summary += self.trunk.summary(prefix=prefix + "    ")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, task_info: TaskInfo) -> TensorType:
         if self.should_use_task_encoding:
@@ -491,6 +592,23 @@ class ClusterOfExperts(MixtureOfExperts):
             task_index_to_mask=task_index_to_encoder_index,
         )
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the ClusterOfExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the ClusterOfExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}Cluster of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
 
 class OneToOneExperts(MixtureOfExperts):
     def __init__(
@@ -519,6 +637,23 @@ class OneToOneExperts(MixtureOfExperts):
             task_index_to_mask=torch.eye(num_tasks),
         )
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the OneToOneExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the OneToOneExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}One to one mapping of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
 
 class EnsembleOfExperts(MixtureOfExperts):
     def __init__(
@@ -546,3 +681,20 @@ class EnsembleOfExperts(MixtureOfExperts):
             batch_size=batch_size,
             task_index_to_mask=torch.ones(num_tasks, num_experts),
         )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the EnsembleOfExperts.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the EnsembleOfExperts.
+        """
+        summary: str = ""
+        summary = f"{prefix}Ensemble of experts\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()

@@ -22,5 +22,3 @@ defaults:
   - logger: mtrl
   - metrics: ${defaults.0.setup}
   - logbook: mtrl
-name: run_name
-num_seeds: 10

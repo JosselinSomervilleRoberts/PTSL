@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-from toolbox.printing import debug, sdebug
+from toolbox.printing import debug, sdebug, str_with_color
 
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.components import base as base_component
@@ -21,6 +21,11 @@ from mtrl.utils.types import ConfigType, ModelType, TensorType
 def check_if_should_use_multi_head_policy(multitask_cfg: ConfigType) -> bool:
     if "should_use_multi_head_policy" in multitask_cfg:
         return multitask_cfg.should_use_multi_head_policy
+    return False
+
+def check_if_should_use_pal(multitask_cfg: ConfigType) -> bool:
+    if "should_use_pal" in multitask_cfg:
+        return multitask_cfg.should_use_pal
     return False
 
 
@@ -167,8 +172,14 @@ class Actor(BaseActor):
         self.should_use_multi_head_policy = check_if_should_use_multi_head_policy(
             multitask_cfg=multitask_cfg
         )
+        self.should_use_pal = check_if_should_use_pal(
+            multitask_cfg=multitask_cfg
+        )
+        assert not (
+            self.should_use_multi_head_policy and self.should_use_pal
+        ), "Cannot have both multi-head policy and PAL"
 
-        if self.should_use_multi_head_policy:
+        if self.should_use_multi_head_policy or self.should_use_pal:
             task_index_to_mask = torch.eye(multitask_cfg.num_envs)
             self.moe_masks = moe_layer.MaskCache(
                 task_index_to_mask=task_index_to_mask,
@@ -209,6 +220,29 @@ class Actor(BaseActor):
         )
 
         self.apply(agent_utils.weight_init)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the actor.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the actor.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Actor " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}" + str_with_color("Encoder:", "bold") + "\n"
+        summary += self.encoder.summary(prefix=prefix + "    ")
+        summary += f"{prefix}" + str_with_color("Model:", "bold") + "\n"
+        summary += self.model.summary(prefix=prefix + "    ")
+        summary += "\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def _make_encoder(
         self,
@@ -268,10 +302,20 @@ class Actor(BaseActor):
         pal_dim: int,
         output_dim: int,
         num_layers: int,
+        shared_projection: bool,
+        use_residual_connections: bool,
         multitask_cfg: ConfigType,
     ):
-        pass
-            
+        return moe_layer.FeedForwardPAL(
+            n_tasks=multitask_cfg.num_envs,
+            in_features=input_dim,
+            out_features=output_dim,
+            num_layers=num_layers,
+            hidden_features=hidden_dim,
+            pal_features=pal_dim,
+            shared_projection=shared_projection,
+            use_residual_connections=use_residual_connections,
+        )      
 
     def _make_trunk(
         self,
@@ -346,6 +390,18 @@ class Actor(BaseActor):
         ):
             model_input_dim += multitask_cfg.task_encoder_cfg.model_cfg.output_dim
 
+        if self.should_use_pal:
+            model = self._make_pal(
+                input_dim=model_input_dim,
+                hidden_dim=hidden_dim,
+                pal_dim=multitask_cfg.pal_cfg.pal_dim,
+                output_dim=model_output_dim,
+                num_layers=num_layers,
+                shared_projection=multitask_cfg.pal_cfg.shared_projection,
+                use_residual_connections=multitask_cfg.pal_cfg.use_residual_connections,
+                multitask_cfg=multitask_cfg,
+            )
+            return model
         if self.should_use_multi_head_policy:
             if multitask_cfg.should_use_disjoint_policy:
                 heads = self._make_head(
@@ -371,9 +427,7 @@ class Actor(BaseActor):
                     num_layers=num_layers,
                     multitask_cfg=multitask_cfg,
                 )
-                return nn.Sequential(trunk, nn.ReLU(), heads)
-        # elif pal: # TODO
-        #     pass
+                return moe_layer.SequentialSum(trunk, nn.ReLU(), heads)
         else:
             trunk = self._make_trunk(
                 input_dim=model_input_dim,
@@ -406,7 +460,8 @@ class Actor(BaseActor):
         detach_encoder: bool = False,
     ) -> Tuple[TensorType, TensorType, TensorType, TensorType]:
         task_info = mtobs.task_info
-        # sdebug(task_info.env_index)
+        if self.should_use_pal:
+            self.model.set_indices(task_info.env_index)
         assert task_info is not None
         if self.should_condition_encoder_on_task_info:
             obs = self.encode(mtobs=mtobs, detach=detach_encoder)
@@ -422,7 +477,6 @@ class Actor(BaseActor):
                 env_obs=mtobs.env_obs, task_obs=mtobs.task_obs, task_info=temp_task_info
             )
             obs = self.encode(temp_mtobs, detach=detach_encoder)
-        # debug(obs)
         if self.should_condition_model_on_task_info:
             new_mtobs = MTObs(
                 env_obs=obs, task_obs=mtobs.task_obs, task_info=mtobs.task_info
@@ -430,15 +484,11 @@ class Actor(BaseActor):
             mu_and_log_std = self.model(new_mtobs)
         else:
             mu_and_log_std = self.model(obs)
-        # debug(mu_and_log_std)
         if self.should_use_multi_head_policy:
-            # print("using multi head policy")
             policy_mask = self.moe_masks.get_mask(task_info=task_info)
             sum_of_masked_mu_and_log_std = (mu_and_log_std * policy_mask).sum(dim=0)
             sum_of_policy_count = policy_mask.sum(dim=0)
             mu_and_log_std = sum_of_masked_mu_and_log_std / sum_of_policy_count
-            # debug(mu_and_log_std)
-        # print("")
         mu, log_std = mu_and_log_std.chunk(2, dim=-1)
         # constrain log_std inside [log_std_min, log_std_max]
         log_std = torch.tanh(log_std)

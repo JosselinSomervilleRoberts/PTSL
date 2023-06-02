@@ -4,6 +4,7 @@
 
 from copy import deepcopy
 from typing import List, cast
+from toolbox.printing import str_with_color
 
 import torch
 import torch.nn as nn
@@ -92,7 +93,7 @@ class PixelEncoder(Encoder):
         super().__init__(env_obs_shape=env_obs_shape, multitask_cfg=multitask_cfg)
 
         assert len(env_obs_shape) == 3
-        self.convs = nn.ModuleList(
+        self.convs = moe_layer.ModuleList(
             [nn.Conv2d(env_obs_shape[0], num_filters, 3, stride=2)]
         )
         for _ in range(num_layers - 1):
@@ -104,6 +105,29 @@ class PixelEncoder(Encoder):
         out_dim = layer_to_dim_mapping[self.num_layers]
         self.fc = nn.Linear(num_filters * out_dim * out_dim, feature_dim)
         self.ln = nn.LayerNorm(feature_dim)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the PixelEncoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the PixelEncoder.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}PixelEncoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Convs:\n"
+        for i, conv in enumerate(self.convs):
+            summary += f"{prefix}        Conv {i}: {conv}\n"
+        summary += f"{prefix}    FC: {self.fc}\n"
+        summary += f"{prefix}    LN: {self.ln}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def reparameterize(self, mu: TensorType, logstd: TensorType) -> TensorType:
         """Reparameterization Trick
@@ -182,6 +206,23 @@ class IdentityEncoder(Encoder):
         # self.feature_dim = obs_shape[0]
         self.feature_dim = feature_dim
 
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the IdentityEncoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the IdentityEncoder.
+        """
+        summary: str = ""
+        summary += f"{prefix}Identity Encoder\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
+
     def forward(self, mtobs: MTObs, detach: bool = False):
         return mtobs.env_obs
 
@@ -219,6 +260,27 @@ class FeedForwardEncoder(Encoder):
             output_dim=feature_dim,
         )
         self.should_tie_encoders = should_tie_encoders
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the FeedForwardEncoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the FeedForwardEncoder.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}FeedForwardEncoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Trunk:\n"
+        for i, layer in enumerate(self.trunk):
+            summary += f"{prefix}        Layer {i}: {layer}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, mtobs: MTObs, detach: bool = False):
         env_obs = mtobs.env_obs
@@ -261,6 +323,27 @@ class FiLM(FeedForwardEncoder):
             num_layers=num_layers,
             output_dim=feature_dim,
         )
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the FiLM.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the FiLM.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}FiLM Encoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Trunk:\n"
+        for i, layer in enumerate(self.trunk):
+            summary += f"{prefix}        Layer {i}: {layer}\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, mtobs: MTObs, detach: bool = False):
         env_obs = mtobs.env_obs
@@ -334,6 +417,28 @@ class MixtureofExpertsEncoder(Encoder):
             bias=True,
         )
         self.should_tie_encoders = encoder_cfg.should_tie_encoders
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the MixtureofExpertsEncoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the MixtureofExpertsEncoder.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}MixtureofExpertsEncoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}    Selection Network:\n"
+        summary += self.selection_network.summary(prefix=prefix + "        ")
+        summary += f"{prefix}    Mixture of Experts:\n"
+        summary += self.moe.summary(prefix=prefix + "        ")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, mtobs: MTObs, detach: bool = False):
         env_obs = mtobs.env_obs

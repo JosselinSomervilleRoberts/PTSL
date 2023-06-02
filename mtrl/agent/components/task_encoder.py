@@ -5,9 +5,11 @@ import json
 
 import torch
 import torch.nn as nn
+from toolbox.printing import str_with_color
 
 from mtrl.agent import utils as agent_utils
 from mtrl.agent.components import base as base_component
+from mtrl.agent.components import moe_layer
 from mtrl.utils.types import ConfigType, TensorType
 
 
@@ -48,7 +50,7 @@ class TaskEncoder(base_component.Component):
                 embeddings=pretrained_embedding,
                 freeze=True,
             )
-            projection_layer = nn.Sequential(
+            projection_layer = moe_layer.SequentialSum(
                 nn.Linear(
                     in_features=pretrained_embedding_dim, out_features=2 * embedding_dim
                 ),
@@ -57,14 +59,14 @@ class TaskEncoder(base_component.Component):
                 nn.ReLU(),
             )
             projection_layer.apply(agent_utils.weight_init)
-            self.embedding = nn.Sequential(  # type: ignore [call-overload]
+            self.embedding = moe_layer.SequentialSum(  # type: ignore [call-overload]
                 pretrained_embedding,
                 nn.ReLU(),
                 projection_layer,
             )
 
         else:
-            self.embedding = nn.Sequential(
+            self.embedding = moe_layer.SequentialSum(
                 nn.Embedding(
                     num_embeddings=num_embeddings, embedding_dim=embedding_dim
                 ),
@@ -78,6 +80,28 @@ class TaskEncoder(base_component.Component):
             num_layers=num_layers,
         )
         self.trunk.apply(agent_utils.weight_init)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the TaskEncoder.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the TaskEncoder.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        summary += f"{prefix}Task Encoder " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"{prefix}Embedding:\n"
+        summary += self.embedding.summary(prefix=f"{prefix}    ")
+        summary += f"{prefix}Trunk:\n"
+        summary += self.trunk.summary(prefix=f"{prefix}    ")
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def forward(self, env_index: TensorType) -> TensorType:
         return self.trunk(self.embedding(env_index))

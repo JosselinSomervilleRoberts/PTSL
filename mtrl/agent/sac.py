@@ -3,6 +3,7 @@
 # Implementation based on Denis Yarats' implementation of [SAC](https://github.com/denisyarats/pytorch_sac).
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Tuple
+from toolbox.printing import str_with_color
 
 import hydra
 import numpy as np
@@ -88,6 +89,7 @@ class Agent(AbstractAgent):
             "critic_target": self.critic_target,
             "log_alpha": self.log_alpha,  # type: ignore[dict-item]
         }
+
         # optimizers
         self.actor_optimizer = hydra.utils.instantiate(
             actor_optimizer_cfg, params=self.get_parameters(name="actor")
@@ -125,6 +127,35 @@ class Agent(AbstractAgent):
 
         if should_complete_init:
             self.complete_init(cfg_to_load_model=cfg_to_load_model)
+
+    def summary(self, prefix: str = "") -> str:
+        """Summary of the SAC.
+
+        Args:
+            prefix (str, optional): prefix to add to the summary before each line.
+                Defaults to "".
+
+        Returns:
+            str: summary of the SAC.
+        """
+        summary: str = ""
+        num_parameters = sum(p.numel() for p in self.actor.parameters() if p.requires_grad)
+        num_parameters += sum(p.numel() for p in self.critic.parameters() if p.requires_grad)
+        num_parameters += sum(p.numel() for p in self.critic_target.parameters() if p.requires_grad)
+        num_parameters += self.log_alpha.numel() if self.log_alpha.requires_grad else 0
+        summary += f"{prefix}SAC Agent " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
+        summary += f"\n{prefix}" + str_with_color("Actor", ["bold", "blue"]) + "\n"
+        summary += self.actor.summary(prefix=prefix + "    ")
+        summary += f"\n{prefix}" + str_with_color("Critic", ["bold", "blue"]) + "\n"
+        summary += self.critic.summary(prefix=prefix + "    ")
+        summary += f"\n{prefix}" + str_with_color("Critic Target", ["bold", "blue"]) + "\n"
+        summary += self.critic_target.summary(prefix=prefix + "    ")
+        summary += f"\n{prefix}" + str_with_color("Log Alpha", ["bold", "blue"]) + "\n"
+        summary += f"{prefix}    Tensor ({self.log_alpha.shape})\n"
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.summary()
 
     def complete_init(self, cfg_to_load_model: Optional[ConfigType]):
         if cfg_to_load_model:
