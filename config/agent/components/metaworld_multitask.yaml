@@ -7,9 +7,9 @@ should_use_multi_head_policy: False
 should_use_pal: False
 should_use_disjoint_policy: False # experimental. This variable is ignored if should_use_multi_head_policy is set to False.
 pal_cfg:
-  pal_dim: 100
+  pal_dim: 50
   shared_projection: True
-  residual_mode: ["none", "sum", "linear", "project"]
+  residual_mode: "none" # Should be in ["none", "sum", "linear", "project"]
 task_encoder_cfg:
   model_cfg:
     _target_: mtrl.agent.components.task_encoder.TaskEncoder

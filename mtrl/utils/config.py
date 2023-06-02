@@ -136,7 +136,7 @@ def _process_setup_config(config: ConfigType) -> ConfigType:
     if setup_config.base_path is None:
         setup_config.base_path = hydra.utils.get_original_cwd()
     if not setup_config.debug.should_enable:
-        setup_config.id = f"{hashlib.sha224(setup_config.description.encode()).hexdigest()}_issue_{setup_config.git.issue_id}_seed_{setup_config.seed}"
+        setup_config.id = f"{hashlib.sha224(setup_config.description.encode()).hexdigest()}_issue_{setup_config.git.issue_id}_seed_{setup_config.seed_ref}"
 
     current_commit_id = utils.get_current_commit_id()
     if not setup_config.git.commit_id:
