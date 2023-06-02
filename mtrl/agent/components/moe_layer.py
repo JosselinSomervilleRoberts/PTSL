@@ -201,7 +201,8 @@ class FeedForward(nn.Module):
         summary += f"{prefix}FeedForward " + str_with_color(f"({num_parameters} parameters)", "purple") + "\n"
         summary += f"{prefix}" + str_with_color("Layers:", "bold") + "\n"
         for i, layer in enumerate(self._layers):
-            summary += f"{prefix}    " + str_with_color(f"Layer {i}:", "bold") + f" {layer}\n"
+            summary += f"{prefix}    " + str_with_color(f"Layer {i}:", "bold") + f" {layer}"
+            if not hasattr(layer, "summary"): summary += "\n"
         return summary
     
     def __repr__(self) -> str:
