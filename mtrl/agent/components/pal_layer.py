@@ -46,7 +46,6 @@ class PALLayer(nn.Module):
                  residual_alpha: Optional[nn.Parameter] = None,
                  debug: bool = False):
         super(PALLayer, self).__init__()
-        pal_size += 4
         self.activation = activation
         self.n_tasks = n_tasks
         self.pal_size = pal_size
