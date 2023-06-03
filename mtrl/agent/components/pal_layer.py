@@ -190,6 +190,10 @@ class PALLayer(nn.Module):
         return self.summary()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # If x is a MTObs, then we need to extract the env_obs
+        if isinstance(x, MTObs):
+            x = x.env_obs
+            
         assert self._residual_mode == "none", f"Residual mode is not none, it is {self._residual_mode}. You should use residual_forward instead."
         if self.indices is None:
             assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
@@ -226,11 +230,13 @@ class PALLayer(nn.Module):
     
     def residual_forward(self, x: torch.Tensor, residual_x_down: Optional[torch.Tensor] = None, residual_y_down: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """Similar to forward but uses the residual_x_down and residual_y_down."""
-        assert residual_x_down is None or residual_x_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_x_down {(x.shape[0], self._input_pal_size)}, got {residual_x_down.shape}"
-        assert residual_y_down is None or residual_y_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_y_down {(x.shape[0], self._input_pal_size)}, got {residual_y_down.shape}"
         # If x is a MTObs, then we need to extract the env_obs
         if isinstance(x, MTObs):
             x = x.env_obs
+            
+        assert residual_x_down is None or residual_x_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_x_down {(x.shape[0], self._input_pal_size)}, got {residual_x_down.shape}"
+        assert residual_y_down is None or residual_y_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_y_down {(x.shape[0], self._input_pal_size)}, got {residual_y_down.shape}"
+        
         if self.indices is None:
             assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
         else:
