@@ -3,6 +3,7 @@ import torch.nn as nn
 from typing import Optional, Tuple
 from toolbox.printing import debug as print_debug
 from toolbox.printing import str_with_color
+from mtrl.agent.ds.mt_obs import MTObs
 
 
 class PALLayer(nn.Module):
@@ -227,6 +228,9 @@ class PALLayer(nn.Module):
         """Similar to forward but uses the residual_x_down and residual_y_down."""
         assert residual_x_down is None or residual_x_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_x_down {(x.shape[0], self._input_pal_size)}, got {residual_x_down.shape}"
         assert residual_y_down is None or residual_y_down.shape == (x.shape[0], self._input_pal_size), f"Expected shape for residual_y_down {(x.shape[0], self._input_pal_size)}, got {residual_y_down.shape}"
+        # If x is a MTObs, then we need to extract the env_obs
+        if isinstance(x, MTObs):
+            x = x.env_obs
         if self.indices is None:
             assert x.shape == (self.n_tasks, self.input_size), f"Since no indices are specified, expected shape {(self.n_tasks, self.input_size)}, got {x.shape}"
         else:
