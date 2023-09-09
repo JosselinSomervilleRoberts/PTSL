@@ -48,12 +48,13 @@ class Experiment(multitask.Experiment):
             config=self.config, benchmark=benchmark, mode=mode, env_id_to_task_map=None
         )
         mode = "eval"
-        envs[mode], env_id_to_task_map = env_builder.build_metaworld_vec_env(
-            config=self.config,
-            benchmark=benchmark,
-            mode="train",
-            env_id_to_task_map=env_id_to_task_map,
-        )
+        envs[mode] = envs["train"]
+        # envs[mode], env_id_to_task_map = env_builder.build_metaworld_vec_env(
+        #     config=self.config,
+        #     benchmark=benchmark,
+        #     mode="train",
+        #     env_id_to_task_map=env_id_to_task_map,
+        # )
         # In MT10 and MT50, the tasks are always sampled in the train mode.
         # For more details, refer https://github.com/rlworkgroup/metaworld
 
