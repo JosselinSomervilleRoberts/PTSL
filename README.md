@@ -8,16 +8,81 @@
 
 ## Installation steps
 We recommend using `conda` to install this as we were not able to install the package using facebook's isntructions. Instead we provide a custom `environment.yml` to install it with `conda`.
+
+**If you are on an AWS EC2 instance, you can run our script: `aws_setup.sh` that should handle everything for you.**
+
+Here are the step you will have to follow *(from this directory)* to install the repo:
+
+* Instal Mujoco (see below). If the website is down *(which happenned in the past)* you can instead unzip the provided `.mujoco.zip` of this repo and place it in your home directory. Otherwise, run the following commands:
 ```bash
-conda env create -f environment.yml
-conda activate mtrl
-pip install git+https://github.com/Farama-Foundation/Metaworld.git@af8417bfc82a3e249b4b02156518d775f29eb28
-pip install "mtenv[metaworld]"
-pip install git+https://github.com/JosselinSomervilleRoberts/JossPythonToolbox.git
-pip install wandb
+# Install Mujoco
+pwd=`pwd` # Save current path
+cd /home/ubuntu
+mkdir .mujoco
+cd .mujoco
+wget https://www.roboti.us/file/mjkey.txt # Key
+wget https://www.roboti.us/download/mujoco200_linux.zip # Mujoco 200
+yes y | sudo apt-get install unzip
+unzip mujoco200_linux.zip
+mv mujoco200_linux mujoco200
+rm -r -f mujoco200_linux.zip
+wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz # Mujoco 210 (Not needed)
+tar -xvf mujoco210-linux-x86_64.tar.gz
+rm -r -f mujoco210-linux-x86_64.tar.gz
+cd $pwd
 ```
 
-You will need to install Mujoco. If you are on an AWS EC2 instance, you can run our script: `aws_setup.sh` that should handle everything for you.
+* You should then add the following lines to your `~/.bashrc` (or `~/.zshrc` if you use `zsh`) toc omplete the installation:
+```bash
+echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:~/.mujoco/mujoco200/bin' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib/nvidia' >> ~/.bashrc
+source ~/.bashrc
+```
+
+* Create the conda environment `mtrl` and activate it. *This contains most necessary packages for the project except a few one that you will have to install manually (see below)*. This may take up some time.
+```bash
+# Create conda env and activate it
+conda env create -f environment.yml
+conda init bash
+source ~/.bashrc
+conda activate mtrl
+```
+
+* Finish installing mujoco, this will use `apt` to install some packages.
+```bash
+# Finish installing mujoco
+yes y | sudo apt update
+yes y | sudo apt-get install patchelf
+yes y | sudo apt-get install libglew-dev
+yes y | sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3
+
+# Finish mujoco installs
+yes y | pip install gym==0.21.0
+yes y | pip install mujoco-py==2.0.2.13
+yes y | pip install scipy==1.9.1
+yes y | pip install protobuf==3.20.0
+```
+At this point, if you run into issues with the installation of `gym==0.21.0` or `mujoco-py`, try running the following commands:
+```bash
+pip install "cython<3"
+
+# Install GCC 7
+sudo add-apt-repository ppa:jonathonf/gcc
+sudo apt-get update
+sudo apt install gcc-7
+
+sudo apt-get install patchelf
+sudo apt-get install libglu1-mesa-dev mesa-common-dev
+```
+
+* Finally install the last dependencies:
+```bash
+# Additional installs (metaworld, mtenv)
+yes y | pip install git+https://github.com/Farama-Foundation/Metaworld.git@af8417bfc82a3e249b4b02156518d775f29eb28
+yes y | pip install "mtenv[metaworld]"
+yes y | pip install git+https://github.com/JosselinSomervilleRoberts/JossPythonToolbox.git
+yes y | pip install wandb
+```
 
 You can check your installation by running:
 ```bash
@@ -30,20 +95,6 @@ You should see something like this (after a few minutes):
 ```
 
 Then you can look [here](https://mtrl.readthedocs.io/en/latest/pages/tutorials/baseline.html) for the doc.
-
-If you are running into issues with the installation of `gym==0.21.0` or `mujoco-py`, try running the following commands:
-
-```bash
-pip install "cython<3"
-
-# Install GCC 7
-sudo add-apt-repository ppa:jonathonf/gcc
-sudo apt-get update
-sudo apt install gcc-7
-
-sudo apt-get install patchelf
-sudo apt-get install libglu1-mesa-dev mesa-common-dev
-```
 
 # MTRL
 Multi Task RL Algorithms
