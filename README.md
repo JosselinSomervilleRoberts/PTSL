@@ -31,6 +31,20 @@ You should see something like this (after a few minutes):
 
 Then you can look [here](https://mtrl.readthedocs.io/en/latest/pages/tutorials/baseline.html) for the doc.
 
+If you are running into issues with the installation of `gym==0.21.0` or `mujoco-py`, try running the following commands:
+
+```bash
+pip install "cython<3"
+
+# Install GCC 7
+sudo add-apt-repository ppa:jonathonf/gcc
+sudo apt-get update
+sudo apt install gcc-7
+
+sudo apt-get install patchelf
+sudo apt-get install libglu1-mesa-dev mesa-common-dev
+```
+
 # MTRL
 Multi Task RL Algorithms
 
