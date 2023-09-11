@@ -48,9 +48,12 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
     if time_start < 0: time_start = time.time()
 
     try:
-        # RUn "mv logs/* logs_saved/"
+        # Run "mv logs/* logs_saved/"
         print_visible("Starting seed " + str(seed))
-        os.system("rm -r -f /home/ubuntu/mtrl/logs")
+        logs_path = os.path.normpath(os.path.join(os.path.realpath(__file__), "../../../../logs"))
+        logs_path = os.path.normpath(logs_path)
+        print_visible("Logs Path: " + logs_path)
+        os.system("rm -r -f " + logs_path)
         start_wandb(config, seed=seed)
         run(config, seed=seed)
     except Exception as e:
@@ -62,7 +65,7 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
             print(f"Exception: {e}")
             print("Timeout, shutting down")
             wandb.finish()
-            shutdown()
+            # shutdown()
             return
         
     wandb.finish()
@@ -77,7 +80,6 @@ def launch(config: ConfigType) -> None:
     for seed_inc in range(config.setup.num_seeds):
         seed = seed_ref + seed_inc
         launch_one_seed(config, seed=seed, time_start=time_start)
-    shutdown()
     return
 
 
