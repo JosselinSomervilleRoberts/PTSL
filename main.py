@@ -50,8 +50,10 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
     try:
         # Run "mv logs/* logs_saved/"
         print_visible("Starting seed " + str(seed))
-        logs_path = os.path.normpath(os.path.join(os.path.realpath(__file__), "../../../../logs"))
+        mtrl_path = os.path.normpath(os.path.join(os.path.realpath(__file__), "../../../../"))
+        logs_path = os.path.normpath(os.path.join(mtrl_path, "logs"))
         logs_path = os.path.normpath(logs_path)
+        print_visible("Repo Path: " + mtrl_path)
         print_visible("Logs Path: " + logs_path)
         os.system("rm -r -f " + logs_path)
         start_wandb(config, seed=seed)
