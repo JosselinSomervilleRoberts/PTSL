@@ -55,7 +55,6 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
         logs_path = os.path.normpath(logs_path)
         print_visible("Repo Path: " + mtrl_path)
         print_visible("Logs Path: " + logs_path)
-        os.system(f"$MTRL_PATH={mtrl_path}")
         os.system("rm -r -f " + logs_path)
         start_wandb(config, seed=seed)
         run(config, seed=seed)
