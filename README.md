@@ -58,7 +58,13 @@ yes y | sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3
 
 # Finish mujoco installs
 yes y | pip install gym==0.21.0
-yes y | pip install mujoco-py==2.0.2.13
+# You can try to install mujoco-py version 2.0.2.13
+# but this often generates this error:
+# mujoco_py/cymj.pyx:92:23: Cannot assign type 'void (const char *) except * nogil' to 'void (*)(const char *) noexcept nogil'. Exception values are incompatible. Suggest adding 'noexcept' to type 'void (const char *) except * nogil'.
+# So instead of this:
+# yes y | pip install mujoco-py==2.0.2.13
+# We advise to downgrade to version 2.0.2.5:
+yes y | pip install mujoco-py==2.0.2.5
 yes y | pip install scipy==1.9.1
 yes y | pip install protobuf==3.20.0
 ```
@@ -94,7 +100,17 @@ You should see something like this (after a few minutes):
 | train | E: 5271 | S: 790650 | D: 2.7 s | Su: 0.7000 | BR: 1.1659 | ALOSS: -131.8787 | CLOSS: 45.3631 | R_0: 458.9632 | R_1: 294.8278 | R_2: 88.5741 | R_3: 80.9546 | R_4: 328.5237 | R_5: 0.4047 | R_6: 162.7022 | R_7: 227.9077 | R_8: 79.3807 | R_9: 151.6023 | Su_0: 1.0000 | Su_1: 1.0000 | Su_2: 1.0000 | Su_3: 1.0000 | Su_4: 1.0000 | Su_5: 0.0000 | Su_6: 1.0000 | Su_7: 0.0000 | Su_8: 0.0000 | Su_9: 1.0000 | ENV_0: 0 | ENV_1: 1 | ENV_2: 2 | ENV_3: 3 | ENV_4: 4 | ENV_5: 5 | ENV_6: 6 | ENV_7: 7 | ENV_8: 8 | ENV_9: 9
 ```
 
-Then you can look [here](https://mtrl.readthedocs.io/en/latest/pages/tutorials/baseline.html) for the doc.
+it is very likely that when running the previous command, you will get an error like this:
+```
+Maximum path length allowed by the benchmark has been exceeded
+```
+This is a `mujoco` check that we can disable. To do this, simply go to `~/anaconda3/envs/mtrl/lib/python3.8/site-packages/metaworld/envs/mujoco/mujoco_env.py` and comment the lines 107 and 108:
+```python
+if getattr(self, 'curr_path_length', 0) > self.max_path_length:
+  raise ValueError('Maximum path length allowed by the benchmark has been exceeded')
+```
+
+You can look [here](https://mtrl.readthedocs.io/en/latest/pages/tutorials/baseline.html) for the doc.
 
 # MTRL
 Multi Task RL Algorithms
