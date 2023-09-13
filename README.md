@@ -1,12 +1,19 @@
-[![CircleCI](https://circleci.com/gh/facebookresearch/mtrl.svg?style=svg&circle-token=8cc8eb1b9666a65e27a21c39b5d5398744365894)](https://circleci.com/gh/facebookresearch/mtrl)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/facebookresearch/mtrl/blob/main/LICENSE)
-[![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/release/python-360/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![Zulip Chat](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://mtenv.zulipchat.com)
+# Projected Task-Specific Layers for Multi-Task Reinforcement Learning
+[paper](TODO) | [mtrl repo](https://github.com/facebookresearch/mtrl) | [mtrl docs](https://mtrl.readthedocs.io/en/latest/index.html)
 
-# This is a fork of MTRL
+In proceedings - IEEE ICRA 2024
 
-## Installation steps
+**Authors:** Josselin Somerville Roberts, Julia Di
+
+## Abstract 
+Multi-task learning is a very challenging problem in reinforcement learning and yet it is essential in order to build robots capable of performing tasks in a real-world setting. One of the challenges of multi-task learning is learning how to generalize from one task to another. Another challenge is to design a policy such that when learning simultaneously several tasks, improving in one task does not deteriorate too much other tasks' performances. In this paper, we will focus in the latter by introducing our new architecture, Projected Task-Specific Layers (PTSL), that introduces the notion of a common policy with dense task-specific corrections through task-specific layers. We then show that our model outperforms the state of the art on the MT-10 benchmark of meta world consisting of 10 goal-conditioned tasks for a sawyer arm.
+
+## Table of contents
+* [Installation](#installation)
+* [Method](#method)
+* [Recreate the results from the paper](#recreate)
+
+## Installation
 We recommend using `conda` to install this as we were not able to install the package using facebook's isntructions. Instead we provide a custom `environment.yml` to install it with `conda`.
 
 **If you are on an AWS EC2 instance, you can run our script: `aws_setup.sh` that should handle everything for you.**
@@ -57,6 +64,8 @@ yes y | sudo apt-get install libglew-dev
 yes y | sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3
 
 # Finish mujoco installs
+yes y | pip install "cython<3"
+yes y | pip install lockfile
 yes y | pip install gym==0.21.0
 # You can try to install mujoco-py version 2.0.2.13
 # but this often generates this error:
@@ -70,8 +79,6 @@ yes y | pip install protobuf==3.20.0
 ```
 At this point, if you run into issues with the installation of `gym==0.21.0` or `mujoco-py`, try running the following commands:
 ```bash
-pip install "cython<3"
-
 # Install GCC 7
 sudo add-apt-repository ppa:jonathonf/gcc
 sudo apt-get update
@@ -110,101 +117,424 @@ if getattr(self, 'curr_path_length', 0) > self.max_path_length:
   raise ValueError('Maximum path length allowed by the benchmark has been exceeded')
 ```
 
-You can look [here](https://mtrl.readthedocs.io/en/latest/pages/tutorials/baseline.html) for the doc.
 
-# MTRL
-Multi Task RL Algorithms
 
-## Contents
+## Method
 
-1. [Introduction](#Introduction)
+PTSL (Projected Task-Specific Layers) is a network architecture for multi-tal learning. It is made of a shared backbone and low-rank task-specific layers (See Figure below for an illustration of PTSL).
+The backbone is a linear layer that is shared between all tasks. The task-specific layers are linear layers that are specific to each task.
 
-2. [Setup](#Setup)
+![PTSL](./figures/PTSL.png)
 
-3. [Usage](#Usage)
 
-4. [Documentation](#Documentation)
 
-5. [Contributing to MTRL](#Contributing-to-MTRL)
+## <a name="recreate"></a>Recreate the results from the paper
 
-6. [Community](#Community)
+In this section we describe the exact commands to run the same experiments as us and recreate the exact same results. All commands should be run inside the `mtrl` environment from the root of the repo *(Results are seeded from 1 to $n$ if you are running $n$ experiments)*.
 
-7. [Acknowledgements](#Acknowledgements)
+### MT-10 for 200K steps
 
-## Introduction
+You chan check out our Wandb run [here](https://wandb.ai/single-shot-robot/PTSL_MTRL10-200K?workspace=user-josselin).
 
-MTRL is a library of multi-task reinforcement learning algorithms. It has two main components:
+* **MT-SAC**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=10 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=200000 setup.seed_ref=1 \
+setup.num_seeds=10 setup.name=SAC replay_buffer.batch_size=1280 \
+agent.encoder.type_to_select=identity agent.multitask.num_envs=10 \
+agent.multitask.should_use_disentangled_alpha=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=False \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=True \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=True
+```
 
-* [Building blocks](https://github.com/facebookresearch/mtrl/tree/main/mtrl/agent/components) and [agents](https://github.com/facebookresearch/mtrl/tree/main/mtrl/agent) that implement the multi-task RL algorithms.
+* **Soft Modularization**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+experiment.num_eval_episodes=10 experiment.num_train_steps=200000 setup.seed_ref=1 \
+setup.num_seeds=10 setup.name=soft_modularization replay_buffer.batch_size=1280 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.encoder.type_to_select=feedforward \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=True \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=False \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=False \
+agent.multitask.actor_cfg.moe_cfg.should_use=True \
+agent.multitask.actor_cfg.moe_cfg.mode=soft_modularization \
+agent.multitask.should_use_multi_head_policy=False \
+agent.encoder.feedforward.hidden_dim=50 agent.encoder.feedforward.num_layers=2 \
+agent.encoder.feedforward.feature_dim=50 agent.actor.num_layers=4 \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=False
+```
 
-* [Experiment setups](https://github.com/facebookresearch/mtrl/tree/main/mtrl/experiment) that enable training/evaluation on different setups. 
+* **CARE**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=10 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=200000 setup.seed_ref=1 \
+setup.num_seeds=10 setup.name=CARE replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True
+```
 
-Together, these two components enable use of MTRL across different environments and setups.
+* **CARE - PTSL** (Same number of parameters as CARE):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=10 \
+setup.name=PAL_shared_3_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
 
-### List of publications & submissions using MTRL (please create a pull request to add the missing entries):
+* **CARE - PTSL** (2 hidden layers):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=10 \
+setup.name=PAL_shared_2_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
 
-* [Learning Robust State Abstractions for Hidden-Parameter Block MDPs](https://arxiv.org/abs/2007.07206)
-* [Multi-Task Reinforcement Learning with Context-based Representations](https://arxiv.org/abs/2102.06177)
-    *  We use the `af8417bfc82a3e249b4b02156518d775f29eb289` commit for the MetaWorld environments for our experiments.
 
-### License
+### MT-10 for 1M steps
+
+You chan check out our Wandb run [here](https://wandb.ai/single-shot-robot/PTSL_MTRL10-1M?workspace=user-josselin).
+
+* **MT-SAC**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=10 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=SAC replay_buffer.batch_size=1280 \
+agent.encoder.type_to_select=identity agent.multitask.num_envs=10 \
+agent.multitask.should_use_disentangled_alpha=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=False \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=True \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=True
+```
+
+* **Soft Modularization**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=soft_modularization replay_buffer.batch_size=1280 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.encoder.type_to_select=feedforward \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=True \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=False \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=False \
+agent.multitask.actor_cfg.moe_cfg.should_use=True \
+agent.multitask.actor_cfg.moe_cfg.mode=soft_modularization \
+agent.multitask.should_use_multi_head_policy=False \
+agent.encoder.feedforward.hidden_dim=50 agent.encoder.feedforward.num_layers=2 \
+agent.encoder.feedforward.feature_dim=50 agent.actor.num_layers=4 \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=False
+```
+
+* **CARE**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=10 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=CARE replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True
+```
+
+* **CARE - PTSL** (Same number of parameters as CARE):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=1000000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared_3_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+* **CARE - PTSL** (2 hidden layers):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=1000000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared_2_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+
+### MT-10 - Projection Analysis
+
+You chan check out our Wandb run [here](https://wandb.ai/single-shot-robot/PTSL_MTRL10-Projection?workspace=user-josselin).
+
+* CARE - PTSL **(Independent Projection)**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=10 \
+setup.name=PAL_shared replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=False agent.multitask.pal_cfg.residual_mode=none
+```
+
+* CARE - PTSL **(Shared Projection)**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=10 \
+setup.name=PAL_shared replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+
+### MT-10 - Residual Analysis
+
+You chan check out our Wandb run [here](https://wandb.ai/single-shot-robot/PTSL_MTRL10-Residual?workspace=user-josselin).
+
+* CARE - PTSL **(No Residual)**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=321 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+* CARE - PTSL **(Sum Residual)**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=sum
+```
+
+* CARE - PTSL **(Linear Residual)**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=linear
+```
+
+* CARE - PTSL **(Product Residual)**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
+agent.actor.hidden_dim=321 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=project
+```
+
+
+### MT-50 for 200K steps
+
+You chan check out our Wandb run [here](https://wandb.ai/single-shot-robot/PTSL_MTRL50-200K?workspace=user-josselin).
+
+* **MT-SAC**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=50 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=200000 setup.seed_ref=1 \
+setup.num_seeds=10 setup.name=SAC replay_buffer.batch_size=1280 \
+agent.encoder.type_to_select=identity agent.multitask.num_envs=50 \
+agent.multitask.should_use_disentangled_alpha=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=False \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=True \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=True
+```
+
+* **Soft Modularization**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+experiment.num_eval_episodes=10 experiment.num_train_steps=200000 setup.seed_ref=1 \
+setup.num_seeds=10 setup.name=soft_modularization replay_buffer.batch_size=1280 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.encoder.type_to_select=feedforward \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=True \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=False \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=False \
+agent.multitask.actor_cfg.moe_cfg.should_use=True \
+agent.multitask.actor_cfg.moe_cfg.mode=soft_modularization \
+agent.multitask.should_use_multi_head_policy=False \
+agent.encoder.feedforward.hidden_dim=50 agent.encoder.feedforward.num_layers=2 \
+agent.encoder.feedforward.feature_dim=50 agent.actor.num_layers=4 \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=False
+```
+
+* **CARE**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=50 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=200000 setup.seed_ref=1 \
+setup.num_seeds=10 setup.name=CARE replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True
+```
+
+* **CARE - PTSL** (Same number of parameters as CARE):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=50 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=10 \
+setup.name=PAL_shared_3_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+* **CARE - PTSL** (2 hidden layers):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=50 \
+experiment.num_train_steps=200000 setup.seed_ref=1 setup.num_seeds=10 \
+setup.name=PAL_shared_2_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+
+
+### MT-50 for 1M steps
+
+You chan check out our Wandb run [here](https://wandb.ai/single-shot-robot/PTSL_MTRL50-1M?workspace=user-josselin).
+
+* **MT-SAC**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=50 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=SAC replay_buffer.batch_size=1280 \
+agent.encoder.type_to_select=identity agent.multitask.num_envs=50 \
+agent.multitask.should_use_disentangled_alpha=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=False \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=True \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=True
+```
+
+* **Soft Modularization**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=soft_modularization replay_buffer.batch_size=1280 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.encoder.type_to_select=feedforward \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=True \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=False \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=False \
+agent.multitask.actor_cfg.moe_cfg.should_use=True \
+agent.multitask.actor_cfg.moe_cfg.mode=soft_modularization \
+agent.multitask.should_use_multi_head_policy=False \
+agent.encoder.feedforward.hidden_dim=50 agent.encoder.feedforward.num_layers=2 \
+agent.encoder.feedforward.feature_dim=50 agent.actor.num_layers=4 \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=False
+```
+
+* **CARE**:
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=3 agent.multitask.num_envs=50 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=CARE replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True
+```
+
+* **CARE - PTSL** (Same number of parameters as CARE):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=50 \
+experiment.num_train_steps=1000000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared_3_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+* **CARE - PTSL** (2 hidden layers):
+```bash
+PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt50 agent=state_sac \
+agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=50 \
+experiment.num_train_steps=1000000 setup.seed_ref=1 setup.num_seeds=4 \
+setup.name=PAL_shared_2_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
+agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
+agent.multitask.num_envs=50 agent.multitask.should_use_disentangled_alpha=True \
+agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
+agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
+```
+
+
+## License
 
 * MTRL uses [MIT License](https://github.com/facebookresearch/mtrl/blob/main/LICENSE).
 
 * [Terms of Use](https://opensource.facebook.com/legal/terms)
 
 * [Privacy Policy](https://opensource.facebook.com/legal/privacy)
-
-### Citing MTRL
-
-If you use MTRL in your research, please use the following BibTeX entry:
-```
-@Misc{Sodhani2021MTRL,
-  author =       {Shagun Sodhani and Amy Zhang},
-  title =        {MTRL - Multi Task RL Algorithms},
-  howpublished = {Github},
-  year =         {2021},
-  url =          {https://github.com/facebookresearch/mtrl}
-}
-```
-
-## Setup
-
-* Clone the repository: `git clone git@github.com:facebookresearch/mtrl.git`.
-
-* Install dependencies: `pip install -r requirements/dev.txt`
-
-## Usage
-
-* MTRL supports 8 different multi-task RL algorithms as described [here](https://mtrl.readthedocs.io/en/latest/pages/tutorials/overview.html).
-
-* MTRL supports multi-task environments using [MTEnv](https://github.com/facebookresearch/mtenv). These environments include [MetaWorld](https://meta-world.github.io/) and multi-task variants of [DMControl Suite](https://github.com/deepmind/dm_control)
-
-* Refer the [tutorial](https://mtrl.readthedocs.io/en/latest/pages/tutorials/overview.html) to get started with MTRL.
-
-## Documentation
-
-[https://mtrl.readthedocs.io](https://mtrl.readthedocs.io)
-
-## Contributing to MTRL
-
-There are several ways to contribute to MTRL.
-
-1. Use MTRL in your research.
-
-2. Contribute a new algorithm. We currently support [8 multi-task RL algorithms](https://mtrl.readthedocs.io/en/latest/pages/algorithms/supported.html) and are looking forward to adding more environments.
-
-3. Check out the [good-first-issues](https://github.com/facebookresearch/mtrl/pulls?q=is%3Apr+is%3Aopen+label%3A%22good+first+issue%22) on GitHub and contribute to fixing those issues.
-
-4. Check out additional details [here](https://github.com/facebookresearch/mtrl/blob/main/.github/CONTRIBUTING.md).
-
-## Community
-
-Ask questions in the chat or github issues:
-* [Chat](https://mtenv.zulipchat.com)
-* [Issues](https://github.com/facebookresearch/mtrl/issues)
-
-## Acknowledgements
-
-* Our implementation of SAC is inspired by Denis Yarats' implementation of [SAC](https://github.com/denisyarats/pytorch_sac).
-* Project file pre-commit, mypy config, towncrier config, circleci etc are based on same files from [Hydra](https://github.com/facebookresearch/hydra).
