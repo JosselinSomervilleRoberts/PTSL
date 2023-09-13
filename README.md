@@ -127,10 +127,31 @@ The backbone is a linear layer that is shared between all tasks. The task-specif
 ![PTSL](./figures/PTSL.png)
 
 
+### Inspiration
+PTSL is inspired by the PAL (Projected Attention Layers) architecture introduced in [BERT and PALs: Projected Attention Layers for Efficient Adaptation in Multi-Task Learning](https://arxiv.org/abs/1902.02671).
+
+### Task-specific layers implementation
+One difference with PAL is the use of context. In their paper, the PAL authors do not mention batching for different tasks.
+This is a challenge as while Pytorch performs an efficient batch matrix multiplication in order to compute $W^T . X$ for a batched $X \in \mathbb{R}^{B \times H}$ and $W \in \mathbb{R}^{H \times D}$, it does not offer a similar solution for a task-dependent batch multiplication.
+Indeed given a batched $X \in \mathbb{R}^{B \times H}$, a batched task id $\text{Id} \in ⟦0, N-1⟧^B$ and $N$ task-dependent matrices $W^j \in \mathbb{R}^{D \times D}$ (that can be represented by $W \in \mathbb{R}^{N \times D \times D}$ such that $W_j = W^j$), Pytorch does not offer a native way to compute $W_{Id_{k}}^T . X_k$ for $k \in ⟦0, B-1⟧$.
+In order to solve this, we have to provide $Id$ in advance in order to build $W^B$ such that $W^B_{Id_{k}} = W^{Id_{k}}$ for $k \in ⟦0, B-1⟧$.
+We can then use batched matrix multiplication to compute $W^B . X$ and then use a gather operation to get the correct output for each task.
+This is the bottleneck of our implementation as it requires constructing this matrix $W^B$ for each batch. In the future, we may consider implementing in C++ a custom batched matrix multiplication that would take into account the task ID directly in Pytorch.
+
+### Tricks for training
+Similarly to Projected Attention layers, tuning the task-specific layers can be tricky, especially from scratch.
+In fact, in the PAL paper, they only add the projected layers to an already pre-trained model as the idea is to use the PAL layers to adapt the shared network.
+Here, since we train everything from scratch, we need to be careful about the initialization of the task-specific layers.
+We found out that initializing all the weights with a Xavier initialization and all the biases to zero did not work at all as the loss exploded really fast.
+We believe that when training both the task-specific layers and the shared layers at the same time, they end up competing against each other.
+This is why we decided to try to initialize the projection matrices to zero so that the model would first train the shared policy and then gradually train the task-specific layers.
+This showed great results and so this is what we kept for our experiments.
+
+
 
 ## <a name="recreate"></a>Recreate the results from the paper
 
-In this section we describe the exact commands to run the same experiments as us and recreate the exact same results. All commands should be run inside the `mtrl` environment from the root of the repo *(Results are seeded from 1 to $n$ if you are running $n$ experiments)*.
+In this section we describe the exact commands to run the same experiments as us and recreate the exact same results. All commands should be run inside the `mtrl` environment from the root of the repo *(Results are seeded from 1 to n if you are running n experiments)*.
 
 ### MT-10 for 200K steps
 
