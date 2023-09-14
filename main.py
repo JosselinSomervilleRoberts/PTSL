@@ -42,7 +42,7 @@ def start_wandb(config, seed: int = -1):
         "pal/shared": config.agent.multitask.pal_cfg.shared_projection,
         "pal/residual": config.agent.multitask.pal_cfg.residual_mode,
     }
-    wandb.init(project=f"MTRL{config.agent.multitask.num_envs}", name=wandb_name, group=group_wandb, config=config_wandb)
+    wandb.init(project=f"MTRL{config.agent.multitask.num_envs}-1M", name=wandb_name, group=group_wandb, config=config_wandb)
 
 def launch_one_seed(config, seed: int, time_start: int = -1):
     if time_start < 0: time_start = time.time()
@@ -55,7 +55,7 @@ def launch_one_seed(config, seed: int, time_start: int = -1):
         logs_path = os.path.normpath(logs_path)
         print_visible("Repo Path: " + mtrl_path)
         print_visible("Logs Path: " + logs_path)
-        os.system("rm -r -f " + logs_path)
+        os.system(f"rm -r -f \" {logs_path}\"")
         start_wandb(config, seed=seed)
         run(config, seed=seed)
     except Exception as e:
