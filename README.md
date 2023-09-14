@@ -200,7 +200,7 @@ agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_he
 agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True
 ```
 
-* **CARE - PTSL** (Same number of parameters as CARE):
+* **CARE + PTSL** (Same number of parameters as CARE):
 ```bash
 PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
 agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
@@ -214,7 +214,7 @@ agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
 agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
 ```
 
-* **CARE - PTSL** (2 hidden layers):
+* **CARE + PTSL** (2 hidden layers):
 ```bash
 PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
 agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=10 \
@@ -276,7 +276,7 @@ agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_he
 agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True
 ```
 
-* **CARE - PTSL** (Same number of parameters as CARE):
+* **CARE + PTSL** (Same number of parameters as CARE):
 ```bash
 PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
 agent.actor.hidden_dim=326 agent.actor.num_layers=3 experiment.num_eval_episodes=10 \
@@ -290,16 +290,17 @@ agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
 agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
 ```
 
-* **CARE - PTSL** (2 hidden layers):
+* **SAC + PTSL** (Same number of parameters as CARE):
 ```bash
 PYTHONPATH=. python3 -u main.py setup=metaworld env=metaworld-mt10 agent=state_sac \
-agent.actor.hidden_dim=400 agent.actor.num_layers=2 experiment.num_eval_episodes=10 \
-experiment.num_train_steps=1000000 setup.seed_ref=1 setup.num_seeds=4 \
-setup.name=PAL_shared_2_hidden replay_buffer.batch_size=1280 agent.encoder.type_to_select=moe \
-agent.encoder.moe.task_id_to_encoder_id_cfg.mode=attention agent.encoder.moe.num_experts=4 \
-agent.multitask.num_envs=10 agent.multitask.should_use_disentangled_alpha=True \
-agent.multitask.should_use_task_encoder=True agent.multitask.should_use_multi_head_policy=False \
-agent.multitask.task_encoder_cfg.model_cfg.pretrained_embedding_cfg.should_use=True \
+agent.actor.hidden_dim=367 agent.actor.num_layers=3 agent.multitask.num_envs=10 \
+experiment.num_eval_episodes=10 experiment.num_train_steps=1000000 setup.seed_ref=1 \
+setup.num_seeds=4 setup.name=SAC_PTSL replay_buffer.batch_size=1280 \
+agent.encoder.type_to_select=identity agent.multitask.num_envs=10 \
+agent.multitask.should_use_disentangled_alpha=True agent.multitask.should_use_multi_head_policy=False \
+agent.multitask.actor_cfg.should_condition_model_on_task_info=False \
+agent.multitask.actor_cfg.should_condition_encoder_on_task_info=True \
+agent.multitask.actor_cfg.should_concatenate_task_info_with_encoder=True \
 agent.multitask.should_use_pal=True agent.multitask.pal_cfg.pal_dim=50 \
 agent.multitask.pal_cfg.shared_projection=True agent.multitask.pal_cfg.residual_mode=none
 ```
